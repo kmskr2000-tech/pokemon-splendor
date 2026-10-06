@@ -5,8 +5,8 @@ import {
   COLORS, MASTER, TOKEN_KEYS, MASTER_TOTAL, TOKENS_PER_COLOR, MAX_TOKENS, MAX_HAND,
   WIN_POINTS, TIER_KEYS, RESERVABLE_TIER_KEYS, TABLE_SLOTS, SPECIAL_TIER_KEYS, PHASES,
   RULE_CHOICES,
-} from './constants.js?v=1791285954';
-import { nextInt, shuffle } from './rng.js?v=1791285954';
+} from './constants.js?v=1791286273';
+import { nextInt, shuffle } from './rng.js?v=1791286273';
 
 const ok = (state, events) => ({ ok: true, state, events });
 const fail = (error) => ({ ok: false, error });
@@ -28,6 +28,10 @@ export function bonusList(card) {
 export function getBonuses(player) {
   const bonuses = Object.fromEntries(COLORS.map((c) => [c, 0]));
   for (const card of player.tableau) {
+    for (const b of bonusList(card)) bonuses[b] += 1;
+  }
+  // Official rule: tucked (evolved-from) cards' bonuses still count for discounts.
+  for (const card of player.evolved || []) {
     for (const b of bonusList(card)) bonuses[b] += 1;
   }
   return bonuses;
