@@ -1,12 +1,12 @@
 // Pure HTML-string renderers. Each takes the controller and returns markup; main.js owns the DOM.
 // All text interpolated here comes from our own card data / constants (no user input).
 
-import { COLORS, MASTER, PHASES, TOKEN_KEYS } from '../core/constants.js?v=1791272191';
-import { getBonuses, getPoints, tokenCount, bonusList, isSpecial } from '../core/engine.js?v=1791272191';
-import { BALLS, TRAINERS, evoText } from './controller.js?v=1791272191';
-import { dexSummary } from '../storage/store.js?v=1791272191';
-import { ACHIEVEMENTS } from '../data/achievements.js?v=1791272191';
-import { CHALLENGES, challengeProgress } from '../data/challenges.js?v=1791272191';
+import { COLORS, MASTER, PHASES, TOKEN_KEYS } from '../core/constants.js?v=1791272358';
+import { getBonuses, getPoints, tokenCount, bonusList, isSpecial } from '../core/engine.js?v=1791272358';
+import { BALLS, TRAINERS, evoText } from './controller.js?v=1791272358';
+import { dexSummary } from '../storage/store.js?v=1791272358';
+import { ACHIEVEMENTS } from '../data/achievements.js?v=1791272358';
+import { CHALLENGES, challengeProgress } from '../data/challenges.js?v=1791272358';
 
 const diffLabel = { easy: '쉬움', normal: '보통', hard: '어려움' };
 
@@ -584,7 +584,7 @@ export function netHTML(net, notice = '') {
       const modeBtn = net.usePeer
         ? '<button class="btn ghost" data-action="net-manual">수동 연결 (서버 없이)</button>'
         : '<button class="btn ghost" data-action="net-peer">간편 연결로 돌아가기</button>';
-      body = `<p class="sheet-p">같은 와이파이에 있는 친구와 대전해요.<br>${net.usePeer ? '방 코드 6자리만 입력하면 바로 연결돼요.' : '서버 없이 폰끼리 직접 연결돼요.'} (2~4인)</p>
+      body = `<p class="sheet-p">친구와 대전해요.<br>${net.usePeer ? '방 코드 6자리만 입력하면 바로 연결돼요.' : '서버 없이 폰끼리 직접 연결돼요.'} (2~4인)</p>
         <div class="btnrow"><button class="btn primary" data-action="net-host">방 만들기</button>
         <button class="btn primary" data-action="net-join">참가하기</button></div>
         <div class="btnrow">${modeBtn}
@@ -656,7 +656,7 @@ export function netHTML(net, notice = '') {
       body = '';
   }
   return `<div class="overlay"><div class="panel netpanel">
-    <div class="title">📡 대전 <small>같은 와이파이 멀티플레이</small></div>
+    <div class="title">📡 대전 <small>멀티플레이</small></div>
     ${notice ? `<p class="sheet-p warn">${esc(notice)}</p>` : ''}
     ${body}
   </div></div>`;
