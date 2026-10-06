@@ -1,11 +1,11 @@
 // Multiplayer session: owns the NetRoom, the lockstep protocol flow, and the
 // multiplayer controller. main.js only renders `session` state and forwards taps.
 
-import { CARDS } from '../data/cards.js?v=1791291734';
-import { createController } from '../ui/controller.js?v=1791291734';
-import { NetRoom } from './webrtc.js?v=1791291734';
-import { PeerRoom } from './peerroom.js?v=1791291734';
-import { MSG, makeMsg, stateHash } from './protocol.js?v=1791291734';
+import { CARDS } from '../data/cards.js?v=1791292935';
+import { createController } from '../ui/controller.js?v=1791292935';
+import { NetRoom } from './webrtc.js?v=1791292935';
+import { PeerRoom } from './peerroom.js?v=1791292935';
+import { MSG, makeMsg, stateHash } from './protocol.js?v=1791292935';
 
 const MAX_PLAYERS = 4;
 

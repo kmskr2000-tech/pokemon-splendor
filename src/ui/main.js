@@ -41,16 +41,16 @@ function showInAppGuide() {
 }
 showInAppGuide();
 
-import { CARDS } from '../data/cards.js?v=1791291734';
-import { ACHIEVEMENTS, checkAchievements } from '../data/achievements.js?v=1791291734';
-import { CHALLENGES, challengeWon } from '../data/challenges.js?v=1791291734';
-import { createController } from './controller.js?v=1791291734';
-import * as V from './view.js?v=1791291734';
-import { NetSession } from '../net/session.js?v=1791291734';
-import { getBonuses, getPoints, bonusList } from '../core/engine.js?v=1791291734';
-import { startBGM, stopBGM, unlockAudio } from '../audio/bgm.js?v=1791291734';
-import { sfx, setSFXEnabled } from '../audio/sfx.js?v=1791291734';
-import { browserStorage, loadDex, loadSave, saveGame, clearSave, recordCatch, recordGame, loadOptions, saveOptions, loadAchv, unlockAchv, loadRecords, recordResult, victoryScore, loadChal, completeChal } from '../storage/store.js?v=1791291734';
+import { CARDS } from '../data/cards.js?v=1791292935';
+import { ACHIEVEMENTS, checkAchievements } from '../data/achievements.js?v=1791292935';
+import { CHALLENGES, challengeWon } from '../data/challenges.js?v=1791292935';
+import { createController } from './controller.js?v=1791292935';
+import * as V from './view.js?v=1791292935';
+import { NetSession } from '../net/session.js?v=1791292935';
+import { getBonuses, getPoints, bonusList } from '../core/engine.js?v=1791292935';
+import { startBGM, stopBGM, unlockAudio } from '../audio/bgm.js?v=1791292935';
+import { sfx, setSFXEnabled } from '../audio/sfx.js?v=1791292935';
+import { browserStorage, loadDex, loadSave, saveGame, clearSave, recordCatch, recordGame, loadOptions, saveOptions, loadAchv, unlockAchv, loadRecords, recordResult, victoryScore, loadChal, completeChal } from '../storage/store.js?v=1791292935';
 
 const params = new URLSearchParams(location.search);
 const AI_DELAY = params.has('fast') ? 0 : 1600; // ?fast=1 skips the pacing delay (tests)
@@ -319,7 +319,6 @@ function startGame(humanName) {
   saveGame(storage, ctrl.snapshot());
   Object.keys(cache).forEach((k) => delete cache[k]);
   window.__ctrl = ctrl; // debugging / automated tests
-  if (options.bgm) startBGM('main');
   render();
 }
 
@@ -371,9 +370,8 @@ const netInputVal = (id) => document.getElementById(id)?.value ?? '';
 document.addEventListener('click', (e) => {
   const el = e.target.closest('[data-action]');
   if (!el || el.disabled) return;
-  // Unlock audio on first interaction; start menu BGM if enabled.
-  unlockAudio();
-  if (options.bgm && !ctrl) startBGM('calm');
+  // Note: BGM auto-start disabled - may interfere with WebRTC on iOS.
+  // Users can enable BGM manually in settings.
   const d = el.dataset;
   switch (d.action) {
     case 'start': startGame(d.name); return;
@@ -423,7 +421,6 @@ document.addEventListener('click', (e) => {
     case 'restart':
       if (net) net.end();
       ctrl = null; tutorial = null; optionsOpen = false; clearTimeout(aiTimer); aiTimer = null;
-      if (options.bgm) startBGM('calm');
       break;
     case 'tutorial': startTutorial(); return;
     // ----- multiplayer -----
