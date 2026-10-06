@@ -396,3 +396,5 @@ button.orsv:hover { border-color: #4ade80; }
 .tface { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; vertical-align: middle; margin-right: 4px; border: 2px solid var(--ink); image-rendering: auto; }
 .tface.big { width: 44px; height: 44px; }
 .opp .nm { display: flex; align-items: center; }
+
+.tileface { display: block; width: 56px; height: 56px; margin: 0 auto 8px; border: 3px solid var(--ink); border-radius: 8px; object-fit: cover; }

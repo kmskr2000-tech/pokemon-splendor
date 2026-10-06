@@ -1,12 +1,12 @@
 // Pure HTML-string renderers. Each takes the controller and returns markup; main.js owns the DOM.
 // All text interpolated here comes from our own card data / constants (no user input).
 
-import { COLORS, MASTER, PHASES, TOKEN_KEYS } from '../core/constants.js?v=1791267401';
-import { getBonuses, getPoints, tokenCount, bonusList, isSpecial } from '../core/engine.js?v=1791267401';
-import { BALLS, TRAINERS, evoText } from './controller.js?v=1791267401';
-import { dexSummary } from '../storage/store.js?v=1791267401';
-import { ACHIEVEMENTS } from '../data/achievements.js?v=1791267401';
-import { CHALLENGES, challengeProgress } from '../data/challenges.js?v=1791267401';
+import { COLORS, MASTER, PHASES, TOKEN_KEYS } from '../core/constants.js?v=1791267915';
+import { getBonuses, getPoints, tokenCount, bonusList, isSpecial } from '../core/engine.js?v=1791267915';
+import { BALLS, TRAINERS, evoText } from './controller.js?v=1791267915';
+import { dexSummary } from '../storage/store.js?v=1791267915';
+import { ACHIEVEMENTS } from '../data/achievements.js?v=1791267915';
+import { CHALLENGES, challengeProgress } from '../data/challenges.js?v=1791267915';
 
 const diffLabel = { easy: '쉬움', normal: '보통', hard: '어려움' };
 
@@ -369,7 +369,7 @@ export function startHTML({ save = null, dex = null, cards = [], options = null 
     <div class="title big">포켓몬 스플렌더<small>POKEMON SPLENDOR · DOT EDITION</small></div>
     <p class="sheet-p">트레이너를 골라 AI 3명과 4인전을 시작해요.<br>18점을 먼저 모으는 트레이너가 승리!</p>
     ${resume}
-    <div class="tiles">${TRAINERS.map((t, i) => `<button class="tile t${i}" data-action="start" data-name="${t}"><span class="tilebox"></span>${t}</button>`).join('')}</div>
+    <div class="tiles">${TRAINERS.map((t, i) => `<button class="tile t${i}" data-action="start" data-name="${t}">${trainerFaceSrc(t) ? `<img class="tileface" src="${trainerFaceSrc(t)}" alt="">` : `<span class="tilebox"></span>`}${t}</button>`).join('')}</div>
     <div class="difflabel">AI 난이도</div>
     <div class="diffrow">
       ${[['easy', '쉬움'], ['normal', '보통'], ['hard', '어려움']].map(([v, l]) =>
