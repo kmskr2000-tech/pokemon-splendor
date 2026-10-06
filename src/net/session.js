@@ -1,11 +1,11 @@
 // Multiplayer session: owns the NetRoom, the lockstep protocol flow, and the
 // multiplayer controller. main.js only renders `session` state and forwards taps.
 
-import { CARDS } from '../data/cards.js?v=1791292935';
-import { createController } from '../ui/controller.js?v=1791292935';
-import { NetRoom } from './webrtc.js?v=1791292935';
-import { PeerRoom } from './peerroom.js?v=1791292935';
-import { MSG, makeMsg, stateHash } from './protocol.js?v=1791292935';
+import { CARDS } from '../data/cards.js?v=1791295102';
+import { createController } from '../ui/controller.js?v=1791295102';
+import { NetRoom } from './webrtc.js?v=1791295102';
+import { FirebaseRoom } from './fireroom.js?v=1791295102';
+import { MSG, makeMsg, stateHash } from './protocol.js?v=1791295102';
 
 const MAX_PLAYERS = 4;
 
@@ -77,7 +77,7 @@ export class NetSession {
       },
       onleave: (i) => this.onLeave(i),
     };
-    return this.usePeer ? new PeerRoom(handlers) : new NetRoom(handlers);
+    return this.usePeer ? new FirebaseRoom(handlers) : new NetRoom(handlers);
   }
 
   // ---------- host ----------
@@ -232,18 +232,38 @@ export class NetSession {
       if (this.usePeer) {
         const clean = String(code || '').trim().toUpperCase();
         this.lastCode = clean;
-        await this.room.guestJoin(clean);
+        await this.room.guestJoin(clean, (attempt) => {
+          this.cb.onNotice(`연결 재시도 중... (${attempt}/2)`);
+          this.cb.onRender();
+        });
         // onjoin -> hello (+rejoin) -> welcome/roster -> guestlobby
       } else {
         this.answerCode = await this.room.join(String(code || '').trim());
         this.phase = 'guestanswer';
       }
-    } catch {
+    } catch (e) {
       this.phase = 'guestjoin';
-      this.cb.onNotice(this.usePeer
-        ? '코드가 올바르지 않거나 방장이 오프라인이에요. 다시 확인해주세요.'
-        : '코드가 올바르지 않아요. 방장에게 다시 받아주세요.');
+      const msg = e && e.message;
+      if (msg === 'room-not-found') {
+        this.cb.onNotice('해당 코드의 방을 찾을 수 없어요. 방장이 방을 다시 만들어주세요.');
+      } else if (msg === 'cancelled') {
+        this.cb.onNotice('연결을 취소했어요.');
+      } else if (this.usePeer) {
+        this.cb.onNotice('서버가 불안정해요. 다시 시도하거나, 수동 연결을 이용해보세요.');
+      } else {
+        this.cb.onNotice('코드가 올바르지 않아요. 방장에게 다시 받아주세요.');
+      }
     }
+    this.cb.onRender();
+  }
+
+  /** User pressed cancel during guest join. */
+  cancelGuestJoin() {
+    if (this.room && typeof this.room.cancelJoin === 'function') {
+      this.room.cancelJoin();
+    }
+    this.phase = 'guestjoin';
+    this.cb.onNotice('연결을 취소했어요.');
     this.cb.onRender();
   }
 

@@ -1,12 +1,12 @@
 // Pure HTML-string renderers. Each takes the controller and returns markup; main.js owns the DOM.
 // All text interpolated here comes from our own card data / constants (no user input).
 
-import { COLORS, MASTER, PHASES, TOKEN_KEYS } from '../core/constants.js?v=1791292935';
-import { getBonuses, getPoints, tokenCount, bonusList, isSpecial } from '../core/engine.js?v=1791292935';
-import { BALLS, TRAINERS, evoText } from './controller.js?v=1791292935';
-import { dexSummary } from '../storage/store.js?v=1791292935';
-import { ACHIEVEMENTS } from '../data/achievements.js?v=1791292935';
-import { CHALLENGES, challengeProgress } from '../data/challenges.js?v=1791292935';
+import { COLORS, MASTER, PHASES, TOKEN_KEYS } from '../core/constants.js?v=1791295102';
+import { getBonuses, getPoints, tokenCount, bonusList, isSpecial } from '../core/engine.js?v=1791295102';
+import { BALLS, TRAINERS, evoText } from './controller.js?v=1791295102';
+import { dexSummary } from '../storage/store.js?v=1791295102';
+import { ACHIEVEMENTS } from '../data/achievements.js?v=1791295102';
+import { CHALLENGES, challengeProgress } from '../data/challenges.js?v=1791295102';
 
 const diffLabel = { easy: '쉬움', normal: '보통', hard: '어려움' };
 
@@ -644,7 +644,8 @@ export function netHTML(net, notice = '') {
         <button class="btn ghost" data-action="net-menu">뒤로</button></div>`;
       break;
     case 'busy':
-      body = `<p class="sheet-p">연결 중이에요...</p>`;
+      body = `<p class="sheet-p">연결 중이에요...</p>
+        <div class="btnrow"><button class="btn ghost" data-action="net-cancel-join">취소</button></div>`;
       break;
     case 'hostoffer':
       body = `${roster ? `<div class="roster">${roster}</div>` : ''}

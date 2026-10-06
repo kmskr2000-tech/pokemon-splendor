@@ -4,7 +4,7 @@
 // Implements the same room interface as NetRoom (webrtc.js) so NetSession
 // works unchanged: send / sendTo / broadcast / onmessage / onjoin / onleave.
 
-import { parseMsg } from './protocol.js?v=1791292935';
+import { parseMsg } from './protocol.js?v=1791295102';
 
 const ID_PREFIX = 'pkmspl-';
 const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // no confusing 0/O/1/I
@@ -46,9 +46,16 @@ export class PeerRoom {
     if (!this.peerCtor) throw new Error('PeerJS not loaded');
     return new Promise((resolve, reject) => {
       const peer = new this.peerCtor(id);
-      const timer = setTimeout(() => reject(new Error('peer-timeout')), 15000);
+      const timer = setTimeout(() => {
+        try { peer.destroy(); } catch {}
+        reject(new Error('peer-timeout'));
+      }, 8000);
       peer.on('open', () => { clearTimeout(timer); resolve(peer); });
-      peer.on('error', (e) => { clearTimeout(timer); reject(e); });
+      peer.on('error', (e) => {
+        clearTimeout(timer);
+        try { peer.destroy(); } catch {}
+        reject(e);
+      });
     });
   }
 
@@ -73,18 +80,67 @@ export class PeerRoom {
   }
 
   /** Guest: connect with the host's short code. Resolves when the channel opens. */
-  async guestJoin(code) {
+  async guestJoin(code, onRetry = null) {
     this.isHost = false;
     const clean = String(code || '').trim().toUpperCase();
     if (!/^[A-Z2-9]{4,8}$/.test(clean)) throw new Error('bad code');
-    this.peer = await this._openPeer();
-    const conn = this.peer.connect(ID_PREFIX + clean, { reliable: true });
-    await new Promise((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error('connect-timeout')), 15000);
-      conn.on('open', () => { clearTimeout(timer); resolve(); });
-      conn.on('error', (e) => { clearTimeout(timer); reject(e); });
-    });
-    this._wire(conn);
+    // Retry up to 2 times: the public PeerJS server is flaky in peak hours.
+    // Each attempt is guarded by a token so late events from an old attempt are ignored.
+    let lastErr = null;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      const myAttempt = Symbol('attempt');
+      this._joinAttempt = myAttempt;
+      try {
+        if (attempt > 1 && onRetry) onRetry(attempt);
+        // Fresh peer each attempt (old one may be in a bad state).
+        try { this.peer && this.peer.destroy(); } catch {}
+        this.peer = null;
+        this.peer = await this._openPeer();
+        if (this._joinAttempt !== myAttempt) throw new Error('cancelled');
+        const conn = this.peer.connect(ID_PREFIX + clean, { reliable: true });
+        await new Promise((resolve, reject) => {
+          const timer = setTimeout(() => reject(new Error('connect-timeout')), 8000);
+          conn.on('open', () => {
+            if (this._joinAttempt !== myAttempt) return; // stale attempt
+            clearTimeout(timer);
+            resolve();
+          });
+          conn.on('error', (e) => {
+            if (this._joinAttempt !== myAttempt) return; // stale attempt
+            clearTimeout(timer);
+            // Distinguish "room not found" from network issues.
+            if (e && e.type === 'peer-unavailable') {
+              const err = new Error('room-not-found');
+              err.cause = e;
+              reject(err);
+            } else {
+              reject(e);
+            }
+          });
+        });
+        if (this._joinAttempt !== myAttempt) throw new Error('cancelled');
+        this._wire(conn);
+        this._joinAttempt = null;
+        return;
+      } catch (e) {
+        if (e && e.message === 'room-not-found') throw e; // don't retry a wrong code
+        if (e && e.message === 'cancelled') throw e;
+        lastErr = e;
+        try { this.peer && this.peer.destroy(); } catch {}
+        this.peer = null;
+        // Wait a bit before retrying.
+        await new Promise((r) => setTimeout(r, 800));
+      }
+    }
+    this._joinAttempt = null;
+    throw lastErr || new Error('connect-failed');
+  }
+
+  /** Cancel an in-progress guestJoin (e.g. user pressed cancel). */
+  cancelJoin() {
+    this._joinAttempt = Symbol('cancelled');
+    try { this.peer && this.peer.destroy(); } catch {}
+    this.peer = null;
   }
 
   sendTo(i, msg) {
