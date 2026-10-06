@@ -88,13 +88,20 @@ const bonusPips = (p) => {
 
 export function opponentsHTML(ctrl) {
   const s = ctrl.state;
-  return s.players.filter((p) => p.id !== ctrl.human).map((p) => `
+  return s.players.filter((p) => p.id !== ctrl.human).map((p) => {
+    const tk = TOKEN_KEYS.filter((k) => p.tokens[k] > 0)
+      .map((k) => `<span class="otp">${ballImg(k, 'mini2')}${p.tokens[k]}</span>`).join('');
+    return `
     <button class="opp px ${s.current === p.id && !ctrl.finished ? 'active' : ''}" data-action="opp" data-id="${p.id}">
       <div class="nm">AI ${p.name}</div>
       <div class="sc">${getPoints(p)}</div>
+      <div class="olbl2">보너스(할인)</div>
       <div class="pips">${bonusPips(p)}</div>
-      <div class="meta">볼 ${tokenCount(p)}개 · 찜 ${p.hand.length}<br>포켓몬 ${p.tableau.length}마리<br><span class="more">눌러서 자세히</span></div>
-    </button>`).join('');
+      <div class="olbl2">가진 볼</div>
+      <div class="otks2">${tk || '<span class="none">없음</span>'}</div>
+      <div class="meta">찜 ${p.hand.length} · 포켓몬 ${p.tableau.length}마리<br><span class="more">눌러서 자세히</span></div>
+    </button>`;
+  }).join('');
 }
 
 // ---------- supply ----------
