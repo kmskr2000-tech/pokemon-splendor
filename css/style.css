@@ -460,13 +460,3 @@ button.orsv:hover { border-color: #4ade80; }
   padding: 6px 12px; font-size: 13px; cursor: pointer; font-family: inherit;
 }
 .aibtn.sel { background: #fbbf24; color: #1a1a2e; font-weight: bold; }
-
-/* ---------- stacked balls ---------- */
-.bstack { display: inline-flex; align-items: center; }
-.bstack img { width: 22px; height: 22px; margin-left: -11px; }
-.bstack img:first-child { margin-left: 0; }
-.tknum { font-weight: bold; margin-left: 5px; font-size: 15px; }
-.tknum.zero { color: #5a5a75; font-weight: normal; }
-.mytk .bstack img { width: 24px; height: 24px; }
-.otp .bstack img, .otk .bstack img { width: 18px; height: 18px; margin-left: -9px; }
-.otp .tknum, .otk .tknum { font-size: 13px; margin-left: 3px; }
