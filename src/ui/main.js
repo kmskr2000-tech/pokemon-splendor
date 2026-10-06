@@ -47,9 +47,73 @@ function scheduleAI() {
   if (aiTimer || !ctrl || ctrl.finished || ctrl.isHumanTurn) return;
   aiTimer = setTimeout(() => {
     aiTimer = null;
-    if (ctrl) ctrl.stepAI();
-    render();
+    if (ctrl) {
+      const snap = snapshotMovables();
+      ctrl.stepAI();
+      render();
+      animateAIFromSnap(snap);
+    }
   }, AI_DELAY);
+}
+
+// ---------- fly animations ----------
+
+const REDUCED_MOTION = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// Detached-but-clonable refs to cards on the table and balls in the supply,
+// captured BEFORE a state change so we can fly a clone to its destination.
+function snapshotMovables() {
+  const snap = new Map();
+  document.querySelectorAll('[data-action="card"]').forEach((el) => snap.set('card:' + el.dataset.card, el));
+  document.querySelectorAll('#supply [data-action="ball"]').forEach((el) => snap.set('ball:' + el.dataset.color, el));
+  return snap;
+}
+
+function flyClone(srcEl, dstEl, ms = 650) {
+  if (!srcEl || !dstEl || REDUCED_MOTION) return;
+  const r1 = srcEl.getBoundingClientRect();
+  const r2 = dstEl.getBoundingClientRect();
+  if (!r1.width || !r2.width) return;
+  const clone = srcEl.cloneNode(true);
+  clone.removeAttribute('data-action');
+  Object.assign(clone.style, {
+    position: 'fixed', left: r1.left + 'px', top: r1.top + 'px',
+    width: r1.width + 'px', height: r1.height + 'px', margin: '0',
+    zIndex: 60, pointerEvents: 'none',
+  });
+  document.body.appendChild(clone);
+  const dx = r2.left + r2.width / 2 - (r1.left + r1.width / 2);
+  const dy = r2.top + r2.height / 2 - (r1.top + r1.height / 2);
+  const anim = clone.animate(
+    [
+      { transform: 'translate(0, 0) scale(1)', opacity: 1 },
+      { transform: `translate(${dx * 0.7}px, ${dy * 0.7 - 24}px) scale(.7)`, opacity: 1, offset: 0.7 },
+      { transform: `translate(${dx}px, ${dy}px) scale(.4)`, opacity: 0.85 },
+    ],
+    { duration: ms, easing: 'cubic-bezier(.3,.7,.4,1)' },
+  );
+  anim.onfinish = () => clone.remove();
+}
+
+function flyBalls(snap, colors, dstEl) {
+  colors.forEach((c, i) => {
+    const src = snap.get('ball:' + c);
+    if (src) setTimeout(() => flyClone(src, dstEl, 500), i * 90);
+  });
+}
+
+function animateAIFromSnap(snap) {
+  const ev = ctrl.lastAIEvent;
+  if (!ev) return;
+  const dst = document.querySelector(`.opp[data-id="${ev.player}"]`);
+  if (!dst) return;
+  if (ev.type === 'buy' || ev.type === 'reserve') {
+    flyClone(snap.get('card:' + ev.cardId), dst);
+  } else if (ev.type === 'takeBalls') {
+    flyBalls(snap, ev.colors, dst);
+  } else if (ev.type === 'takeTwo') {
+    flyBalls(snap, [ev.color, ev.color], dst);
+  }
 }
 
 const hooks = {
@@ -94,12 +158,31 @@ document.addEventListener('click', (e) => {
     case 'restart': ctrl = null; clearTimeout(aiTimer); aiTimer = null; break;
     case 'ball': ctrl.toggleBall(d.color); break;
     case 'clear': ctrl.clearSelection(); break;
-    case 'confirm-balls': ctrl.confirmBalls(); break;
+    case 'confirm-balls': {
+      const colors = [...ctrl.balls];
+      const snap = snapshotMovables();
+      ctrl.confirmBalls();
+      render();
+      flyBalls(snap, colors, document.getElementById('me'));
+      return;
+    }
     case 'card': ctrl.openCard(d.card); break;
     case 'deck': ctrl.openDeck(d.tier); break;
     case 'close': ctrl.closeSheet(); break;
-    case 'buy': ctrl.buy(d.card); break;
-    case 'reserve': ctrl.reserveCard(d.card); break;
+    case 'buy': {
+      const snap = snapshotMovables();
+      ctrl.buy(d.card);
+      render();
+      flyClone(snap.get('card:' + d.card), document.getElementById('me'));
+      return;
+    }
+    case 'reserve': {
+      const snap = snapshotMovables();
+      ctrl.reserveCard(d.card);
+      render();
+      flyClone(snap.get('card:' + d.card), document.getElementById('me'));
+      return;
+    }
     case 'reserve-deck': ctrl.reserveDeck(d.tier); break;
     case 'discard': ctrl.toggleDiscard(d.token); break;
     case 'undiscard': ctrl.undoDiscard(d.token); break;
