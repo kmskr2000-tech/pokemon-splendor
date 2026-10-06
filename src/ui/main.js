@@ -62,19 +62,22 @@ const REDUCED_MOTION = typeof matchMedia === 'function' && matchMedia('(prefers-
 
 // Detached-but-clonable refs to cards on the table and balls in the supply,
 // captured BEFORE a state change so we can fly a clone to its destination.
+// Rects must be read here too — after render() the nodes are detached and measure zero.
 function snapshotMovables() {
   const snap = new Map();
-  document.querySelectorAll('[data-action="card"]').forEach((el) => snap.set('card:' + el.dataset.card, el));
-  document.querySelectorAll('#supply [data-action="ball"]').forEach((el) => snap.set('ball:' + el.dataset.color, el));
+  document.querySelectorAll('[data-action="card"]').forEach((el) =>
+    snap.set('card:' + el.dataset.card, { el, rect: el.getBoundingClientRect() }));
+  document.querySelectorAll('#supply [data-action="ball"]').forEach((el) =>
+    snap.set('ball:' + el.dataset.color, { el, rect: el.getBoundingClientRect() }));
   return snap;
 }
 
-function flyClone(srcEl, dstEl, ms = 650) {
-  if (!srcEl || !dstEl || REDUCED_MOTION) return;
-  const r1 = srcEl.getBoundingClientRect();
+function flyClone(src, dstEl, ms = 650) {
+  if (!src || !dstEl || REDUCED_MOTION) return;
+  const r1 = src.rect;
   const r2 = dstEl.getBoundingClientRect();
   if (!r1.width || !r2.width) return;
-  const clone = srcEl.cloneNode(true);
+  const clone = src.el.cloneNode(true);
   clone.removeAttribute('data-action');
   Object.assign(clone.style, {
     position: 'fixed', left: r1.left + 'px', top: r1.top + 'px',
