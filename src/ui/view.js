@@ -1,12 +1,12 @@
 // Pure HTML-string renderers. Each takes the controller and returns markup; main.js owns the DOM.
 // All text interpolated here comes from our own card data / constants (no user input).
 
-import { COLORS, MASTER, PHASES, TOKEN_KEYS } from '../core/constants.js?v=1791268496';
-import { getBonuses, getPoints, tokenCount, bonusList, isSpecial } from '../core/engine.js?v=1791268496';
-import { BALLS, TRAINERS, evoText } from './controller.js?v=1791268496';
-import { dexSummary } from '../storage/store.js?v=1791268496';
-import { ACHIEVEMENTS } from '../data/achievements.js?v=1791268496';
-import { CHALLENGES, challengeProgress } from '../data/challenges.js?v=1791268496';
+import { COLORS, MASTER, PHASES, TOKEN_KEYS } from '../core/constants.js?v=1791268794';
+import { getBonuses, getPoints, tokenCount, bonusList, isSpecial } from '../core/engine.js?v=1791268794';
+import { BALLS, TRAINERS, evoText } from './controller.js?v=1791268794';
+import { dexSummary } from '../storage/store.js?v=1791268794';
+import { ACHIEVEMENTS } from '../data/achievements.js?v=1791268794';
+import { CHALLENGES, challengeProgress } from '../data/challenges.js?v=1791268794';
 
 const diffLabel = { easy: '쉬움', normal: '보통', hard: '어려움' };
 
@@ -20,7 +20,7 @@ const TRAINER_FACE = {
   '지우': 'trainer-jiwoo',
   '이슬': 'trainer-iseul',
   '웅이': 'trainer-woong',
-  '로이': 'trainer-roy',
+  '로이': 'trainer-roy2',
 };
 export const trainerFaceSrc = (name) => TRAINER_FACE[name] ? `${ASSET}/trainers/${TRAINER_FACE[name]}.webp` : null;
 
