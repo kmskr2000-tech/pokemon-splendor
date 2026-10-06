@@ -161,8 +161,10 @@ function handHTML(ctrl) {
 export function meHTML(ctrl) {
   const me = ctrl.me;
   const b = getBonuses(me);
+  const tc = tokenCount(me);
   return `<div class="row1">
       <div class="who">${me.name}<span class="sc">${getPoints(me)}점</span></div>
+      <div class="tkcount ${tc >= 10 ? 'full' : ''}">볼 ${tc}/10</div>
       <div class="evcount">진화 ${me.evolved.length}회</div>
     </div>
     <div class="mytokens">${tokensHTML(ctrl)}</div>
