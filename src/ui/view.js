@@ -77,6 +77,7 @@ export function headerHTML(ctrl) {
   return `<div class="header">
       <div class="title">포켓몬 스플렌더<small>POKEMON SPLENDOR · DOT EDITION</small></div>
       <button class="rulesbtn" data-action="rules">룰 설명</button>
+      <button class="rulesbtn opt" data-action="options" aria-label="설정">⚙</button>
       <div class="turn ${ctrl.isHumanTurn ? 'mine' : ''}">${badge}</div>
     </div>${last}`;
 }
@@ -388,6 +389,44 @@ export function tutorialHTML(tut) {
       <button class="btn ghost" data-action="tut-skip">건너뛰기</button>
     </div>
   </div>`;
+}
+
+export function optionsHTML(options) {
+  return `<div class="overlay"><div class="panel">
+    <div class="title big">설정</div>
+    <button class="optrow" data-action="toggle-help">
+      <span>초보자 팁 표시</span>
+      <span class="toggle ${options.beginnerHelp ? 'on' : ''}">${options.beginnerHelp ? '켬' : '끔'}</span>
+    </button>
+    <p class="sheet-p">게임 중 상황에 맞는 도움말을 보여줘요.</p>
+    <div class="btnrow"><button class="btn primary" data-action="options-close">닫기</button></div>
+  </div></div>`;
+}
+
+function beginnerTip(ctrl) {
+  const s = ctrl.state;
+  if (s.phase === PHASES.DISCARD) return '볼이 10개를 넘었어요. 아래 내 볼을 눌러 초과분을 반환하세요.';
+  if (s.phase === PHASES.EVOLVE) return '진화 찬스! 조건을 만족한 포켓몬을 진화시키면 점수와 보너스가 올라가요.';
+  if (!ctrl.isHumanTurn) return null;
+  const n = ctrl.balls.length;
+  if (n > 0) {
+    return ctrl.pendingValid()
+      ? '좋아요! [가져가기]를 누르면 볼을 가져오고 턴이 끝나요.'
+      : '서로 다른 볼 3개, 또는 같은 볼 2개(공급처에 4개 이상 남았을 때)를 고를 수 있어요.';
+  }
+  for (const key of ['1', '2', '3', 'rare', 'legend']) {
+    for (const card of s.table[key] || []) {
+      if (card && ctrl.canBuy(card.id)) return '지금 바로 잡을 수 있는 포켓몬이 있어요! 반짝이는 카드를 눌러보세요.';
+    }
+  }
+  return '18점이 목표! 볼을 모아서 포켓몬을 잡으세요. 보너스가 쌓이면 할인이 커져요.';
+}
+
+export function helpHTML(ctrl, options, tutorial) {
+  if (!options.beginnerHelp || !ctrl || ctrl.finished || tutorial) return '';
+  const tip = beginnerTip(ctrl);
+  if (!tip) return '';
+  return `<div class="helpbanner"><span class="helptag">TIP</span><span>${tip}</span></div>`;
 }
 
 export function dexHTML(dex, cards) {

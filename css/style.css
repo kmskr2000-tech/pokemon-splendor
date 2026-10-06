@@ -322,3 +322,24 @@ button.card:not(:disabled):active { transform: translate(3px, 3px); box-shadow: 
 .tutbanner .tutbtns { display: flex; gap: 8px; }
 .tutbanner .btn { font-size: 11px; padding: 6px 12px; }
 #tutorial:empty { display: none; }
+
+.helpbanner {
+  display: flex; gap: 8px; align-items: flex-start;
+  background: #052e16; border: 3px solid #4ade80; border-left: 0; border-right: 0;
+  padding: 8px 12px; font-size: 11px; color: #d1fae5; line-height: 1.6;
+}
+.helptag {
+  flex: none; background: #4ade80; color: #052e16; font-size: 9px; font-weight: bold;
+  padding: 2px 6px; margin-top: 1px;
+}
+#help:empty { display: none; }
+.rulesbtn.opt { background: #3a3a55; padding: 6px 8px; }
+.optrow {
+  display: flex; justify-content: space-between; align-items: center; width: 100%;
+  background: var(--panel); border: 3px solid var(--ink); padding: 12px;
+  font-size: 14px; color: #fff; margin-bottom: 8px;
+}
+.toggle {
+  font-size: 12px; padding: 4px 12px; border: 3px solid var(--ink); background: #3a3a55; color: #a8a8c0;
+}
+.toggle.on { background: #4ade80; color: #052e16; }

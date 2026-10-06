@@ -3,7 +3,7 @@
 import { CARDS } from '../data/cards.js';
 import { createController } from './controller.js';
 import * as V from './view.js';
-import { browserStorage, loadDex, loadSave, saveGame, clearSave, recordCatch, recordGame } from '../storage/store.js';
+import { browserStorage, loadDex, loadSave, saveGame, clearSave, recordCatch, recordGame, loadOptions, saveOptions } from '../storage/store.js';
 
 const params = new URLSearchParams(location.search);
 const AI_DELAY = params.has('fast') ? 0 : 1600; // ?fast=1 skips the pacing delay (tests)
@@ -12,6 +12,7 @@ const AI_NAMES = ['지우', '이슬', '웅이', '레드'];
 const regions = {
   header: ['header', V.headerHTML],
   tutorial: ['tutorial', () => V.tutorialHTML(tutorial)],
+  help: ['help', () => V.helpHTML(ctrl, options, tutorial)],
   opponents: ['opponents', V.opponentsHTML],
   board: ['board', V.boardHTML],
   supply: ['supply', V.supplyHTML],
@@ -26,7 +27,9 @@ let aiTimer = null;
 let dexOpen = false;
 let rulesOpen = false;
 let tutorial = null; // { step } — guided first-game tutorial
+let optionsOpen = false;
 const storage = browserStorage();
+const options = loadOptions(storage);
 
 const $ = (id) => document.getElementById(id);
 
@@ -41,6 +44,7 @@ function render() {
   let overlay = !ctrl ? V.startHTML({ save: loadSave(storage, CARDS), dex: loadDex(storage), cards: CARDS }) : ctrl.finished ? V.endHTML(ctrl) : '';
   if (dexOpen) overlay = V.dexHTML(loadDex(storage), CARDS);
   else if (rulesOpen) overlay = V.rulesHTML();
+  else if (optionsOpen) overlay = V.optionsHTML(options);
   setHTML('overlay', overlay);
   scheduleAI();
 }
@@ -172,6 +176,12 @@ document.addEventListener('click', (e) => {
     case 'dex-close': dexOpen = false; break;
     case 'rules': rulesOpen = true; break;
     case 'rules-close': rulesOpen = false; break;
+    case 'options': optionsOpen = true; break;
+    case 'options-close': optionsOpen = false; break;
+    case 'toggle-help':
+      options.beginnerHelp = !options.beginnerHelp;
+      saveOptions(storage, options);
+      break;
     case 'opp': ctrl.openOpp(d.id); break;
     case 'restart': ctrl = null; tutorial = null; clearTimeout(aiTimer); aiTimer = null; break;
     case 'tutorial': startTutorial(); return;

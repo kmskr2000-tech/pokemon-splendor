@@ -4,6 +4,7 @@
 
 export const DEX_KEY = 'pks-dex-v1';
 export const SAVE_KEY = 'pks-save-v1';
+export const OPTS_KEY = 'pks-opts-v1';
 
 export function browserStorage() {
   try { return globalThis.localStorage ?? null; } catch { return null; }
@@ -95,4 +96,19 @@ export function loadSave(storage, cards) {
   for (const k of Object.keys(g.table)) if (!Array.isArray(g.table[k]) || !g.table[k].every((c) => c === null || known(c))) return null;
   for (const k of Object.keys(g.decks)) if (!Array.isArray(g.decks[k]) || !g.decks[k].every(known)) return null;
   return s;
+}
+
+// ---------- Options ----------
+// { v:1, beginnerHelp: bool }
+
+const defaultOptions = () => ({ v: 1, beginnerHelp: true });
+
+export function loadOptions(storage) {
+  const o = readJSON(storage, OPTS_KEY);
+  if (!isObj(o)) return defaultOptions();
+  return { v: 1, beginnerHelp: o.beginnerHelp !== false };
+}
+
+export function saveOptions(storage, opts) {
+  writeJSON(storage, OPTS_KEY, { v: 1, beginnerHelp: !!opts.beginnerHelp });
 }
