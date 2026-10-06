@@ -351,7 +351,6 @@ export function sheetHTML(ctrl) {
 export function startHTML({ save = null, dex = null, cards = [], options = null } = {}) {
   const sum = dex ? dexSummary(dex, cards) : null;
   const diff = save?.difficulty ?? options?.difficulty ?? 'normal';
-  const pers = save?.personality ?? options?.personality ?? 'random';
   const resume = save
     ? `<button class="btn primary resume" data-action="resume">이어하기<small>${save.humanName} · ${save.game.turn}턴째 · ${new Date(save.savedAt).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</small></button>`
     : '';
@@ -365,11 +364,7 @@ export function startHTML({ save = null, dex = null, cards = [], options = null 
       ${[['easy', '쉬움'], ['normal', '보통'], ['hard', '어려움']].map(([v, l]) =>
         `<button class="diffbtn ${diff === v ? 'sel' : ''}" data-action="difficulty" data-v="${v}">${l}</button>`).join('')}
     </div>
-    <div class="difflabel">AI 성격</div>
-    <div class="diffrow">
-      ${[['random', '랜덤'], ['specialized', '전문화'], ['opportunistic', '견제'], ['balanced', '균형']].map(([v, l]) =>
-        `<button class="diffbtn ${pers === v ? 'sel' : ''}" data-action="personality" data-v="${v}">${l}</button>`).join('')}
-    </div>
+    <p class="sheet-p">AI의 플레이 스타일(전문화·견제·균형)은 매 게임 랜덤으로 정해져요. 🤫</p>
     ${save ? '<p class="sheet-p warn">새로 시작하면 저장된 게임은 사라져요.</p>' : ''}
     <div class="btnrow"><button class="btn alt" data-action="dex">도감 ${sum ? `${sum.caught}/${sum.total}` : ''}</button>
     <button class="btn alt" data-action="rules">룰 설명</button>

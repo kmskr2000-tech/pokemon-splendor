@@ -208,7 +208,7 @@ const hooks = {
 function resumeGame() {
   const save = loadSave(storage, CARDS);
   if (!save) return;
-  ctrl = createController({ cards: CARDS, seed: save.seed, humanName: save.humanName, aiNames: save.aiNames, resume: { game: save.game, log: save.log, difficulty: save.difficulty, personality: save.personality }, hooks });
+  ctrl = createController({ cards: CARDS, seed: save.seed, humanName: save.humanName, aiNames: save.aiNames, resume: { game: save.game, log: save.log, difficulty: save.difficulty, aiPersonalities: save.aiPersonalities }, hooks });
   Object.keys(cache).forEach((k) => delete cache[k]);
   window.__ctrl = ctrl;
   render();
@@ -232,7 +232,7 @@ function startGame(humanName) {
   const seed = seedParam !== null ? Number(seedParam) : (crypto.getRandomValues(new Uint32Array(1))[0] || 1);
   const aiNames = AI_NAMES.filter((n) => n !== humanName).slice(0, 3);
   clearSave(storage); // a new game replaces any saved one
-  ctrl = createController({ cards: CARDS, seed, humanName, aiNames, hooks, difficulty: options.difficulty, personality: options.personality });
+  ctrl = createController({ cards: CARDS, seed, humanName, aiNames, hooks, difficulty: options.difficulty });
   saveGame(storage, ctrl.snapshot());
   Object.keys(cache).forEach((k) => delete cache[k]);
   window.__ctrl = ctrl; // debugging / automated tests
@@ -246,7 +246,7 @@ function startChallenge(id) {
   tutorial = null;
   clearSave(storage); // challenges don't use the save slot
   const seed = (crypto.getRandomValues(new Uint32Array(1))[0] || 1);
-  ctrl = createController({ cards: CARDS, seed, humanName: '나', aiNames: AI_NAMES.slice(0, 3), hooks, difficulty: ch.difficulty, personality: options.personality, challenge: ch });
+  ctrl = createController({ cards: CARDS, seed, humanName: '나', aiNames: AI_NAMES.slice(0, 3), hooks, difficulty: ch.difficulty, challenge: ch });
   ctrl.applyChallengeSetup(ch);
   Object.keys(cache).forEach((k) => delete cache[k]);
   window.__ctrl = ctrl;
@@ -280,12 +280,6 @@ document.addEventListener('click', (e) => {
     case 'difficulty':
       if (['easy', 'normal', 'hard'].includes(d.v)) {
         options.difficulty = d.v;
-        saveOptions(storage, options);
-      }
-      break;
-    case 'personality':
-      if (['random', 'specialized', 'opportunistic', 'balanced'].includes(d.v)) {
-        options.personality = d.v;
         saveOptions(storage, options);
       }
       break;

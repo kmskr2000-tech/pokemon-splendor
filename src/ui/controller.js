@@ -37,10 +37,23 @@ const ERROR_TEXT = {
 
 export const errorText = (code) => ERROR_TEXT[code] ?? `실행할 수 없어요 (${code})`;
 
+// Shuffles the 3 AI personalities and deals one per player seat (index 0 = human,
+// unused). Stable per game via the game seed; restored from save on resume.
+function secretPersonalities(seed, playerCount) {
+  const arr = ['specialized', 'opportunistic', 'balanced'];
+  let s = (seed >>> 0) || 1;
+  const rnd = () => (s = (Math.imul(s, 1664525) + 1013904223) >>> 0) / 4294967296;
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(rnd() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return Array.from({ length: playerCount }, (_, i) => arr[i % arr.length]);
+}
+
 // `resume` ({ game, log }) restores a saved game instead of dealing a new one.
 // `hooks.onCatch(cardId, kind)` fires for the human's captures/evolutions, `hooks.onChange()` after
 // every accepted action, `hooks.onEnd(won)` once when the game finishes (persistence lives outside).
-export function createController({ cards, seed, humanName = '나', aiNames = ['지우', '이슬', '웅이'], resume = null, hooks = {}, difficulty = 'normal', personality = 'random', challenge = null }) {
+export function createController({ cards, seed, humanName = '나', aiNames = ['지우', '이슬', '웅이'], resume = null, hooks = {}, difficulty = 'normal', challenge = null }) {
   const cardsById = new Map(cards.map((c) => [c.id, c]));
   const game = resume?.game ?? createGame({
     cards,
@@ -62,10 +75,11 @@ export function createController({ cards, seed, humanName = '나', aiNames = ['�
     humanName,
     aiNames,
     difficulty: resume?.difficulty ?? difficulty,
-    personality: resume?.personality ?? personality,
     challenge: resume?.challenge ?? challenge,
     challengeDone: null, // 'won' | 'lost' once the challenge resolves
     humanTurns: 0, // completed turns by the human (for challenge limits)
+    // Secret AI personalities: shuffled per game, hidden from the player.
+    aiPersonalities: resume?.aiPersonalities ?? secretPersonalities(seed, 1 + aiNames.length),
     errors: 0, // failed applyAction calls (tests assert 0 for UI-generated actions)
 
     get state() { return this.game; },
@@ -242,7 +256,7 @@ export function createController({ cards, seed, humanName = '나', aiNames = ['�
     pass() { return this.dispatch({ type: 'pass' }); },
 
     snapshot() {
-      return { seed: this.seed, humanName: this.humanName, aiNames: this.aiNames, difficulty: this.difficulty, personality: this.personality, challenge: this.challenge, log: this.log, game: this.game };
+      return { seed: this.seed, humanName: this.humanName, aiNames: this.aiNames, difficulty: this.difficulty, aiPersonalities: this.aiPersonalities, challenge: this.challenge, log: this.log, game: this.game };
     },
 
     // Grants the challenge's starting tokens/tableau (puzzle setup).
@@ -260,7 +274,7 @@ export function createController({ cards, seed, humanName = '나', aiNames = ['�
     // One opponent action. Returns false when it is not an AI turn.
     stepAI(rnd) {
       if (this.finished || this.game.players[this.game.current].isAI !== true) return false;
-      this.dispatch(chooseAction(this.game, rnd, this.difficulty, this.personality));
+      this.dispatch(chooseAction(this.game, rnd, this.difficulty, this.aiPersonalities[this.game.current]));
       return true;
     },
   };
