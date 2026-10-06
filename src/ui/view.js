@@ -340,7 +340,8 @@ export function startHTML({ save = null, dex = null, cards = [] } = {}) {
     <div class="tiles">${TRAINERS.map((t, i) => `<button class="tile t${i}" data-action="start" data-name="${t}"><span class="tilebox"></span>${t}</button>`).join('')}</div>
     ${save ? '<p class="sheet-p warn">새로 시작하면 저장된 게임은 사라져요.</p>' : ''}
     <div class="btnrow"><button class="btn alt" data-action="dex">도감 ${sum ? `${sum.caught}/${sum.total}` : ''}</button>
-    <button class="btn alt" data-action="rules">룰 설명</button></div>
+    <button class="btn alt" data-action="rules">룰 설명</button>
+    <button class="btn alt" data-action="options">⚙ 설정</button></div>
     <div class="btnrow"><button class="btn primary" data-action="tutorial">튜토리얼 (처음 하세요?)</button></div>
   </div></div>`;
 }
@@ -399,6 +400,7 @@ export function optionsHTML(options) {
       <span class="toggle ${options.beginnerHelp ? 'on' : ''}">${options.beginnerHelp ? '켬' : '끔'}</span>
     </button>
     <p class="sheet-p">게임 중 상황에 맞는 도움말을 보여줘요.</p>
+    <div class="btnrow"><button class="btn ghost" data-action="restart">타이틀로 돌아가기</button></div>
     <div class="btnrow"><button class="btn primary" data-action="options-close">닫기</button></div>
   </div></div>`;
 }

@@ -183,7 +183,7 @@ document.addEventListener('click', (e) => {
       saveOptions(storage, options);
       break;
     case 'opp': ctrl.openOpp(d.id); break;
-    case 'restart': ctrl = null; tutorial = null; clearTimeout(aiTimer); aiTimer = null; break;
+    case 'restart': ctrl = null; tutorial = null; optionsOpen = false; clearTimeout(aiTimer); aiTimer = null; break;
     case 'tutorial': startTutorial(); return;
     case 'tut-next': tutAdvance(); return;
     case 'tut-done': tutorial = null; break;
