@@ -340,6 +340,7 @@ export function startHTML({ save = null, dex = null, cards = [] } = {}) {
     ${save ? '<p class="sheet-p warn">새로 시작하면 저장된 게임은 사라져요.</p>' : ''}
     <div class="btnrow"><button class="btn alt" data-action="dex">도감 ${sum ? `${sum.caught}/${sum.total}` : ''}</button>
     <button class="btn alt" data-action="rules">룰 설명</button></div>
+    <div class="btnrow"><button class="btn primary" data-action="tutorial">튜토리얼 (처음 하세요?)</button></div>
   </div></div>`;
 }
 
@@ -367,6 +368,26 @@ export function rulesHTML() {
     </div>
     <div class="btnrow"><button class="btn primary" data-action="rules-close">닫기</button></div>
   </div></div>`;
+}
+
+export function tutorialHTML(tut) {
+  if (!tut) return '';
+  const steps = [
+    `<b>STEP 1</b> 볼을 모아보세요!<br>서로 다른 볼 3개를 누른 뒤 <b>[가져가기]</b>를 누르세요.`,
+    `<b>STEP 2</b> 포켓몬을 잡아보세요!<br>카드를 누르면 필요한 볼을 확인할 수 있어요. 볼이 모자라면 몇 턴 더 모아보세요.`,
+    `<b>STEP 3</b> 보너스 획득!<br>잡은 포켓몬의 보너스 색 볼은 게임 끝까지 1개씩 영구 할인돼요.`,
+    `<b>STEP 4</b> 18점을 먼저 모으면 승리!<br>카드를 미리 <b>[찜하기]</b>로 확보하거나, 보너스를 모아 <b>진화</b>시켜보세요. 행운을 빌어요!`,
+  ];
+  const last = tut.step >= steps.length - 1;
+  const mid = tut.step === 2;
+  return `<div class="tutbanner">
+    <div class="tuttext">${steps[Math.min(tut.step, steps.length - 1)]}</div>
+    <div class="tutbtns">
+      ${mid ? '<button class="btn primary" data-action="tut-next">다음</button>' : ''}
+      ${last ? '<button class="btn primary" data-action="tut-done">시작하기</button>' : ''}
+      <button class="btn ghost" data-action="tut-skip">건너뛰기</button>
+    </div>
+  </div>`;
 }
 
 export function dexHTML(dex, cards) {

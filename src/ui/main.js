@@ -11,6 +11,7 @@ const AI_NAMES = ['지우', '이슬', '웅이', '레드'];
 
 const regions = {
   header: ['header', V.headerHTML],
+  tutorial: ['tutorial', () => V.tutorialHTML(tutorial)],
   opponents: ['opponents', V.opponentsHTML],
   board: ['board', V.boardHTML],
   supply: ['supply', V.supplyHTML],
@@ -24,6 +25,7 @@ let ctrl = null;
 let aiTimer = null;
 let dexOpen = false;
 let rulesOpen = false;
+let tutorial = null; // { step } — guided first-game tutorial
 const storage = browserStorage();
 
 const $ = (id) => document.getElementById(id);
@@ -134,6 +136,19 @@ function resumeGame() {
   render();
 }
 
+function startTutorial() {
+  startGame('나');
+  tutorial = { step: 0 };
+  render();
+}
+
+function tutAdvance() {
+  if (tutorial && tutorial.step < 3) {
+    tutorial.step += 1;
+    render();
+  }
+}
+
 function startGame(humanName) {
   const seedParam = params.get('seed');
   const seed = seedParam !== null ? Number(seedParam) : (crypto.getRandomValues(new Uint32Array(1))[0] || 1);
@@ -158,13 +173,18 @@ document.addEventListener('click', (e) => {
     case 'rules': rulesOpen = true; break;
     case 'rules-close': rulesOpen = false; break;
     case 'opp': ctrl.openOpp(d.id); break;
-    case 'restart': ctrl = null; clearTimeout(aiTimer); aiTimer = null; break;
+    case 'restart': ctrl = null; tutorial = null; clearTimeout(aiTimer); aiTimer = null; break;
+    case 'tutorial': startTutorial(); return;
+    case 'tut-next': tutAdvance(); return;
+    case 'tut-done': tutorial = null; break;
+    case 'tut-skip': tutorial = null; break;
     case 'ball': ctrl.toggleBall(d.color); break;
     case 'clear': ctrl.clearSelection(); break;
     case 'confirm-balls': {
       const colors = [...ctrl.balls];
       const snap = snapshotMovables();
       ctrl.confirmBalls();
+      if (tutorial && tutorial.step === 0) tutorial.step = 1;
       render();
       flyBalls(snap, colors, document.getElementById('me'));
       return;
@@ -175,6 +195,7 @@ document.addEventListener('click', (e) => {
     case 'buy': {
       const snap = snapshotMovables();
       ctrl.buy(d.card);
+      if (tutorial && tutorial.step === 1) tutorial.step = 2;
       render();
       flyClone(snap.get('card:' + d.card), document.getElementById('me'));
       return;
@@ -182,6 +203,7 @@ document.addEventListener('click', (e) => {
     case 'reserve': {
       const snap = snapshotMovables();
       ctrl.reserveCard(d.card);
+      if (tutorial && tutorial.step === 1) tutorial.step = 2;
       render();
       flyClone(snap.get('card:' + d.card), document.getElementById('me'));
       return;
