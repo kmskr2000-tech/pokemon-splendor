@@ -1,12 +1,12 @@
 // Pure HTML-string renderers. Each takes the controller and returns markup; main.js owns the DOM.
 // All text interpolated here comes from our own card data / constants (no user input).
 
-import { COLORS, MASTER, PHASES, TOKEN_KEYS } from '../core/constants.js?v=1791273589';
-import { getBonuses, getPoints, tokenCount, bonusList, isSpecial } from '../core/engine.js?v=1791273589';
-import { BALLS, TRAINERS, evoText } from './controller.js?v=1791273589';
-import { dexSummary } from '../storage/store.js?v=1791273589';
-import { ACHIEVEMENTS } from '../data/achievements.js?v=1791273589';
-import { CHALLENGES, challengeProgress } from '../data/challenges.js?v=1791273589';
+import { COLORS, MASTER, PHASES, TOKEN_KEYS } from '../core/constants.js?v=1791273681';
+import { getBonuses, getPoints, tokenCount, bonusList, isSpecial } from '../core/engine.js?v=1791273681';
+import { BALLS, TRAINERS, evoText } from './controller.js?v=1791273681';
+import { dexSummary } from '../storage/store.js?v=1791273681';
+import { ACHIEVEMENTS } from '../data/achievements.js?v=1791273681';
+import { CHALLENGES, challengeProgress } from '../data/challenges.js?v=1791273681';
 
 const diffLabel = { easy: '쉬움', normal: '보통', hard: '어려움' };
 
@@ -658,7 +658,7 @@ export function netHTML(net, notice = '') {
         `<button class="aibtn ${net.aiCount === n ? 'sel' : ''}" data-action="net-ai" data-n="${n}">${n === 0 ? '없음' : n + '명'}</button>`).join('');
       const total = net.names.length + net.aiCount;
       body = `${codeHtml}<div class="roster">${roster}</div>
-        ${maxAi > 0 ? `<div class="airow"><span>🤖 남는 자리 AI로 채우기</span><div class="aibtns">${aiBtns}</div></div>` : ''}
+        ${maxAi > 0 ? `<div class="airow"><span>🤖 남는 자리 AI로 채우기 <small>(어려움)</small></span><div class="aibtns">${aiBtns}</div></div>` : ''}
         <p class="sheet-p">${net.names.length}명${net.aiCount ? ` + AI ${net.aiCount}명` : ''} (총 ${total}인)</p>
         <div class="btnrow">
         ${!net.usePeer && net.names.length < 4 ? '<button class="btn alt" data-action="net-host-invite">➕ 게스트 초대</button>' : ''}

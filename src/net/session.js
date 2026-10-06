@@ -1,11 +1,11 @@
 // Multiplayer session: owns the NetRoom, the lockstep protocol flow, and the
 // multiplayer controller. main.js only renders `session` state and forwards taps.
 
-import { CARDS } from '../data/cards.js?v=1791273589';
-import { createController } from '../ui/controller.js?v=1791273589';
-import { NetRoom } from './webrtc.js?v=1791273589';
-import { PeerRoom } from './peerroom.js?v=1791273589';
-import { MSG, makeMsg, stateHash } from './protocol.js?v=1791273589';
+import { CARDS } from '../data/cards.js?v=1791273681';
+import { createController } from '../ui/controller.js?v=1791273681';
+import { NetRoom } from './webrtc.js?v=1791273681';
+import { PeerRoom } from './peerroom.js?v=1791273681';
+import { MSG, makeMsg, stateHash } from './protocol.js?v=1791273681';
 
 const MAX_PLAYERS = 4;
 
@@ -302,7 +302,8 @@ export class NetSession {
     // Lockstep: every client builds the identical deterministic engine.
     // hooks are empty — no dex/save/achievement recording in multiplayer (v1).
     // AI seats (if any) are acted by the host; their actions are relayed like any other.
-    const ctrl = createController({ cards: CARDS, seed, mp: { names, me: myIndex, aiNames }, hooks: {} });
+    // Multiplayer AI is fixed to hard difficulty.
+    const ctrl = createController({ cards: CARDS, seed, mp: { names, me: myIndex, aiNames }, hooks: {}, difficulty: 'hard' });
     const raw = ctrl.dispatch.bind(ctrl);
     const self = this;
     ctrl.dispatch = (action) => {
