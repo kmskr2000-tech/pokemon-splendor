@@ -433,3 +433,18 @@ button.orsv:hover { border-color: #4ade80; }
   text-align: center; font-size: 28px; letter-spacing: 6px; font-family: monospace;
   text-transform: uppercase;
 }
+
+/* ---------- in-app browser guide ---------- */
+#inappbar {
+  position: sticky; top: 0; z-index: 999;
+  display: flex; gap: 8px; align-items: center;
+  background: #7c2d12; color: #fff; border-bottom: 3px solid #1a1a2e;
+  padding: 10px 12px; font-size: 13px; line-height: 1.4;
+}
+#inappbar small { color: #fed7aa; }
+#inappbar button {
+  flex-shrink: 0; border: 2px solid #1a1a2e; border-radius: 6px;
+  background: #fbbf24; color: #1a1a2e; font-weight: bold; padding: 6px 10px;
+  font-size: 13px; cursor: pointer;
+}
+#inapp-x { background: transparent !important; color: #fff !important; border: none !important; font-size: 16px !important; }

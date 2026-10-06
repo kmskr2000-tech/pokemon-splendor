@@ -2,13 +2,14 @@
 // Transport-agnostic: works over any ordered reliable channel (WebRTC DataChannel).
 
 export const MSG = {
-  HELLO: 'hello',     // G->H {name}
+  HELLO: 'hello',     // G->H {name} | rejoin: {name, rejoin: playerIndex}
   WELCOME: 'welcome',   // H->G {playerIndex}
   ROSTER: 'roster',    // H->G {names[]} lobby roster update
   START: 'start',      // H->G {seed, names[]} begin game (lockstep)
   ACTION: 'action',    // G->H {action} | H->G {from, action, h}
   SYNC_REQ: 'sync-req',// G->H {} hash mismatch
   SYNC: 'sync',        // H->G {state} full state resync
+  REJOIN_OK: 'rejoin-ok', // H->G {playerIndex, seed, names, state} rejoin accepted
   PING: 'ping',        // both ways {t}
   PONG: 'pong',        // both ways {t}
   BYE: 'bye',          // both ways {}

@@ -1,11 +1,11 @@
 // Multiplayer session: owns the NetRoom, the lockstep protocol flow, and the
 // multiplayer controller. main.js only renders `session` state and forwards taps.
 
-import { CARDS } from '../data/cards.js?v=1791272358';
-import { createController } from '../ui/controller.js?v=1791272358';
-import { NetRoom } from './webrtc.js?v=1791272358';
-import { PeerRoom } from './peerroom.js?v=1791272358';
-import { MSG, makeMsg, stateHash } from './protocol.js?v=1791272358';
+import { CARDS } from '../data/cards.js?v=1791273161';
+import { createController } from '../ui/controller.js?v=1791273161';
+import { NetRoom } from './webrtc.js?v=1791273161';
+import { PeerRoom } from './peerroom.js?v=1791273161';
+import { MSG, makeMsg, stateHash } from './protocol.js?v=1791273161';
 
 const MAX_PLAYERS = 4;
 
@@ -25,12 +25,33 @@ export class NetSession {
     this.myName = '';
     this.myIndex = -1;
     this.names = [];
+    this.seed = 0;
     this.offerCode = '';
     this.answerCode = '';
     this.shortCode = ''; // peer mode: 6-char room code
+    this.lastCode = ''; // peer mode: code used to join (for rejoin lookup)
     this.pendingPeer = -1;
     this.peerToPlayer = {}; // host: peerIdx -> playerIndex
+    this.dropped = {}; // host: playerIndex -> { left, timer } while waiting for rejoin
     this.ctrl = null;
+  }
+
+  // Rejoin persistence (guest): remember code+playerIndex so an accidental
+  // close can resume the same seat within a few minutes.
+  saveRejoin(code, playerIndex) {
+    try {
+      localStorage.setItem('pkmspl-rejoin', JSON.stringify({ code, playerIndex, at: Date.now() }));
+    } catch {}
+  }
+  loadRejoin(code) {
+    try {
+      const o = JSON.parse(localStorage.getItem('pkmspl-rejoin'));
+      if (o && o.code === code && Date.now() - o.at < 10 * 60 * 1000) return o;
+    } catch {}
+    return null;
+  }
+  clearRejoin() {
+    try { localStorage.removeItem('pkmspl-rejoin'); } catch {}
   }
 
   cleanName(n) {
@@ -42,8 +63,12 @@ export class NetSession {
       onmessage: (i, m) => this.onMsg(i, m),
       onjoin: () => {
         // Guest: connection open -> introduce ourselves; host replies with welcome+roster.
+        // Include rejoin seat if we have one for this room code.
         if (this.role === 'guest' && this.room) {
-          this.room.send(makeMsg(MSG.HELLO, { name: this.myName }));
+          const hello = { name: this.myName };
+          const rj = this.usePeer && this.lastCode ? this.loadRejoin(this.lastCode) : null;
+          if (rj) hello.rejoin = rj.playerIndex;
+          this.room.send(makeMsg(MSG.HELLO, hello));
           this.phase = 'guestlobby';
           this.cb.onRender();
         }
@@ -133,6 +158,22 @@ export class NetSession {
   hostMsg(peerIdx, m) {
     switch (m.t) {
       case MSG.HELLO: {
+        // Rejoin mid-game?
+        if (this.phase === 'playing') {
+          const rIdx = m.rejoin;
+          if (Number.isInteger(rIdx) && this.dropped[rIdx]) {
+            clearInterval(this.dropped[rIdx].timer);
+            delete this.dropped[rIdx];
+            this.peerToPlayer[peerIdx] = rIdx;
+            this.room.sendTo(peerIdx, makeMsg(MSG.REJOIN_OK, {
+              playerIndex: rIdx, seed: this.seed, names: this.names, state: this.ctrl.game,
+            }));
+            this.cb.onNotice(`📡 ${this.names[rIdx]}이(가) 다시 연결됐어요!`);
+            this.cb.onRender();
+          }
+          // else: ignore joins mid-game
+          return;
+        }
         if (this.names.length >= MAX_PLAYERS) return;
         if (this.peerToPlayer[peerIdx] != null) return; // already joined
         const idx = this.names.length;
@@ -177,8 +218,10 @@ export class NetSession {
     this.cb.onRender();
     try {
       if (this.usePeer) {
-        await this.room.guestJoin(code);
-        // onjoin -> hello -> welcome/roster -> guestlobby
+        const clean = String(code || '').trim().toUpperCase();
+        this.lastCode = clean;
+        await this.room.guestJoin(clean);
+        // onjoin -> hello (+rejoin) -> welcome/roster -> guestlobby
       } else {
         this.answerCode = await this.room.join(String(code || '').trim());
         this.phase = 'guestanswer';
@@ -196,6 +239,14 @@ export class NetSession {
     switch (m.t) {
       case MSG.WELCOME:
         this.myIndex = m.playerIndex;
+        if (this.usePeer && this.lastCode) this.saveRejoin(this.lastCode, m.playerIndex);
+        break;
+      case MSG.REJOIN_OK:
+        // Rejoin accepted: rebuild at the given seat, then take the live state.
+        this.beginGame(m.seed, m.names, m.playerIndex);
+        this.ctrl.game = m.state;
+        if (this.usePeer && this.lastCode) this.saveRejoin(this.lastCode, m.playerIndex);
+        this.cb.onRender();
         break;
       case MSG.ROSTER:
         this.names = m.names;
@@ -248,6 +299,7 @@ export class NetSession {
     };
     ctrl.applyRemote = (action) => raw(action);
     this.ctrl = ctrl;
+    this.seed = seed;
     this.names = names;
     this.myIndex = myIndex;
     this.phase = 'playing';
@@ -265,10 +317,30 @@ export class NetSession {
 
   onLeave(peerIdx) {
     if (this.phase === 'playing') {
-      const who = this.role === 'host'
-        ? (this.names[this.peerToPlayer[peerIdx]] || '게스트')
-        : '방장';
-      this.cb.onNotice(`📡 ${who}의 연결이 끊겼어요. 대전이 종료됩니다.`);
+      if (this.role === 'host') {
+        const pIdx = this.peerToPlayer[peerIdx];
+        const who = this.names[pIdx] || '게스트';
+        if (pIdx == null || this.dropped[pIdx]) return;
+        // Wait 60s for rejoin instead of ending immediately.
+        const drop = { left: 60 };
+        drop.timer = setInterval(() => {
+          drop.left -= 1;
+          if (drop.left <= 0) {
+            clearInterval(drop.timer);
+            delete this.dropped[pIdx];
+            this.cb.onNotice(`📡 ${who}가 돌아오지 않아 대전이 종료됩니다.`);
+            this.end();
+          } else {
+            this.cb.onRender();
+          }
+        }, 1000);
+        this.dropped[pIdx] = drop;
+        this.cb.onNotice(`📡 ${who}의 연결이 끊겼어요. 60초 안에 다시 들어오면 이어져요.`);
+        this.cb.onRender();
+        return;
+      }
+      // Guest: host is gone, game over.
+      this.cb.onNotice('📡 방장의 연결이 끊겼어요. 대전이 종료됩니다.');
       this.end();
       return;
     }
@@ -286,7 +358,11 @@ export class NetSession {
   }
 
   end() {
+    for (const k of Object.keys(this.dropped || {})) {
+      try { clearInterval(this.dropped[k].timer); } catch {}
+    }
     try { this.room?.close(); } catch { /* noop */ }
+    this.clearRejoin();
     this.reset();
     this.cb.onGameEnd();
   }

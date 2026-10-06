@@ -1,12 +1,12 @@
 // Pure HTML-string renderers. Each takes the controller and returns markup; main.js owns the DOM.
 // All text interpolated here comes from our own card data / constants (no user input).
 
-import { COLORS, MASTER, PHASES, TOKEN_KEYS } from '../core/constants.js?v=1791272358';
-import { getBonuses, getPoints, tokenCount, bonusList, isSpecial } from '../core/engine.js?v=1791272358';
-import { BALLS, TRAINERS, evoText } from './controller.js?v=1791272358';
-import { dexSummary } from '../storage/store.js?v=1791272358';
-import { ACHIEVEMENTS } from '../data/achievements.js?v=1791272358';
-import { CHALLENGES, challengeProgress } from '../data/challenges.js?v=1791272358';
+import { COLORS, MASTER, PHASES, TOKEN_KEYS } from '../core/constants.js?v=1791273161';
+import { getBonuses, getPoints, tokenCount, bonusList, isSpecial } from '../core/engine.js?v=1791273161';
+import { BALLS, TRAINERS, evoText } from './controller.js?v=1791273161';
+import { dexSummary } from '../storage/store.js?v=1791273161';
+import { ACHIEVEMENTS } from '../data/achievements.js?v=1791273161';
+import { CHALLENGES, challengeProgress } from '../data/challenges.js?v=1791273161';
 
 const diffLabel = { easy: '쉬움', normal: '보통', hard: '어려움' };
 
@@ -574,6 +574,21 @@ export function challengeEndHTML(won, challenge) {
 }
 
 // ---------- multiplayer lobby ----------
+
+// ---------- multiplayer rejoin ----------
+
+export function rejoinWaitHTML(net) {
+  const rows = Object.keys(net.dropped || {}).map((k) => {
+    const name = net.names[Number(k)] || '게스트';
+    const left = net.dropped[k].left;
+    return `<div class="roster-row">📡 ${esc(name)} 재연결 대기 중… ${left}초</div>`;
+  }).join('');
+  return `<div class="overlay"><div class="panel netpanel">
+    <div class="title">📡 재연결 대기 중</div>
+    <div class="roster">${rows}</div>
+    <p class="sheet-p">다시 들어오면 이어서 할 수 있어요.<br><small>방 코드: ${esc(net.shortCode)} (친구에게 알려주세요)</small></p>
+  </div></div>`;
+}
 
 export function netHTML(net, notice = '') {
   const roster = net.names.map((name, i) =>

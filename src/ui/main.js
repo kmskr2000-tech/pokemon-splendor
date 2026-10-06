@@ -15,14 +15,40 @@
   } catch { /* offline or first deploy: stay put */ }
 })();
 
-import { CARDS } from '../data/cards.js?v=1791272358';
-import { ACHIEVEMENTS, checkAchievements } from '../data/achievements.js?v=1791272358';
-import { CHALLENGES, challengeWon } from '../data/challenges.js?v=1791272358';
-import { createController } from './controller.js?v=1791272358';
-import * as V from './view.js?v=1791272358';
-import { NetSession } from '../net/session.js?v=1791272358';
-import { getBonuses, getPoints, bonusList } from '../core/engine.js?v=1791272358';
-import { browserStorage, loadDex, loadSave, saveGame, clearSave, recordCatch, recordGame, loadOptions, saveOptions, loadAchv, unlockAchv, loadRecords, recordResult, victoryScore, loadChal, completeChal } from '../storage/store.js?v=1791272358';
+// In-app browser guard: KakaoTalk/etc. popups die when swiped away, killing
+// multiplayer. iOS can't force-open Safari from JS, so detect and guide.
+const INAPP_RE = /KAKAOTALK|Instagram|FBAN|FBAV|FB_IAB|Line\/|NAVER|DaumApp|Whale|MiuiBrowser/i;
+function showInAppGuide() {
+  try {
+    const ua = navigator.userAgent || '';
+    if (!INAPP_RE.test(ua) || sessionStorage.getItem('inapp-dismissed')) return;
+    const bar = document.createElement('div');
+    bar.id = 'inappbar';
+    bar.innerHTML = `<div><b>📱 Safari에서 열어주세요</b><br><small>인앱 브라우저(팝업)는 실수로 내리면 게임 연결이 끊겨요.<br>메뉴(•••) → 'Safari로 열기' 또는 '다른 브라우저로 열기'를 눌러주세요.</small></div>
+      <button id="inapp-copy">URL 복사</button><button id="inapp-x" aria-label="닫기">✕</button>`;
+    document.body.prepend(bar);
+    document.getElementById('inapp-x').onclick = () => {
+      bar.remove();
+      try { sessionStorage.setItem('inapp-dismissed', '1'); } catch {}
+    };
+    document.getElementById('inapp-copy').onclick = async () => {
+      try {
+        await navigator.clipboard.writeText(location.href);
+        document.getElementById('inapp-copy').textContent = '복사됨!';
+      } catch {}
+    };
+  } catch {}
+}
+showInAppGuide();
+
+import { CARDS } from '../data/cards.js?v=1791273161';
+import { ACHIEVEMENTS, checkAchievements } from '../data/achievements.js?v=1791273161';
+import { CHALLENGES, challengeWon } from '../data/challenges.js?v=1791273161';
+import { createController } from './controller.js?v=1791273161';
+import * as V from './view.js?v=1791273161';
+import { NetSession } from '../net/session.js?v=1791273161';
+import { getBonuses, getPoints, bonusList } from '../core/engine.js?v=1791273161';
+import { browserStorage, loadDex, loadSave, saveGame, clearSave, recordCatch, recordGame, loadOptions, saveOptions, loadAchv, unlockAchv, loadRecords, recordResult, victoryScore, loadChal, completeChal } from '../storage/store.js?v=1791273161';
 
 const params = new URLSearchParams(location.search);
 const AI_DELAY = params.has('fast') ? 0 : 1600; // ?fast=1 skips the pacing delay (tests)
@@ -70,6 +96,9 @@ function render() {
   let overlay;
   if (net && !ctrl) {
     overlay = V.netHTML(net, netNotice);
+    netNotice = '';
+  } else if (net && ctrl && !ctrl.finished && net.dropped && Object.keys(net.dropped).length > 0) {
+    overlay = V.rejoinWaitHTML(net);
     netNotice = '';
   } else {
     overlay = !ctrl ? V.startHTML({ save: loadSave(storage, CARDS), dex: loadDex(storage), cards: CARDS, options, notice: netNotice }) : ctrl.finished ? V.endHTML(ctrl) : '';

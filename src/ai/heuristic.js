@@ -3,10 +3,10 @@
 // Works in every phase (action / discard / evolve); the UI drives AI turns with it.
 // Turn pacing (0.8s) lives in ui/main.js (AI_DELAY), not here.
 
-import { COLORS, MASTER, TOKEN_KEYS, PHASES, MAX_TOKENS, MAX_HAND, TIER_KEYS } from '../core/constants.js?v=1791272358';
+import { COLORS, MASTER, TOKEN_KEYS, PHASES, MAX_TOKENS, MAX_HAND, TIER_KEYS } from '../core/constants.js?v=1791273161';
 import {
   legalActions, getCurrentPlayer, getBonuses, bonusList, isSpecial, evolveOptions, tokenCount,
-} from '../core/engine.js?v=1791272358';
+} from '../core/engine.js?v=1791273161';
 
 const BASE_JITTER = 0.01; // breaks exact ties so the three AIs do not play identically
 
