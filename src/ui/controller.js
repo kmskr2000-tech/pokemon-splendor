@@ -5,8 +5,8 @@
 import {
   COLORS, MASTER, PHASES, MAX_HAND,
   createGame, applyAction, legalActions, computePayment, evolveOptions, getCurrentPlayer, tokenCount,
-} from '../core/index.js?v=1791269692';
-import { chooseAction } from '../ai/heuristic.js?v=1791269692';
+} from '../core/index.js?v=1791271218';
+import { chooseAction } from '../ai/heuristic.js?v=1791271218';
 
 export const BALLS = {
   monster: { file: 'poke-ball', name: '몬스터볼', short: '몬스터' },
@@ -53,18 +53,21 @@ function secretPersonalities(seed, playerCount) {
 // `resume` ({ game, log }) restores a saved game instead of dealing a new one.
 // `hooks.onCatch(cardId, kind)` fires for the human's captures/evolutions, `hooks.onChange()` after
 // every accepted action, `hooks.onEnd(won)` once when the game finishes (persistence lives outside).
-export function createController({ cards, seed, humanName = '나', aiNames = ['지우', '이슬', '웅이'], resume = null, hooks = {}, difficulty = 'normal', challenge = null }) {
+export function createController({ cards, seed, humanName = '나', aiNames = ['지우', '이슬', '웅이'], resume = null, hooks = {}, difficulty = 'normal', challenge = null, mp = null }) {
   const cardsById = new Map(cards.map((c) => [c.id, c]));
+  // mp: { names: [...], me: index } — multiplayer: all humans, `me` is the local player.
+  const mpPlayers = mp ? mp.names.map((name, i) => ({ name, isAI: false, remote: i !== mp.me })) : null;
   const game = resume?.game ?? createGame({
     cards,
     seed,
-    players: [{ name: humanName, isAI: false }, ...aiNames.map((name) => ({ name, isAI: true }))],
+    players: mpPlayers ?? [{ name: humanName, isAI: false }, ...aiNames.map((name) => ({ name, isAI: true }))],
   });
 
   const ctrl = {
     game,
     cardsById,
-    human: 0,
+    human: mp ? mp.me : 0,
+    mp: mp ? { names: mp.names, me: mp.me } : null, // multiplayer session info
     balls: [], // selected supply colors (a repeated color means "take two")
     discard: {}, // token map selected for return
     sheet: null, // { kind: 'card', cardId } | { kind: 'deck', tier } | { kind: 'opp', playerId }
@@ -298,7 +301,7 @@ export function describeEvent(ev, ctrl) {
   switch (ev.type) {
     case 'takeBalls': return `${who}: ${ev.colors.map((c) => BALLS[c].name).join('·')} 가져감`;
     case 'takeTwo': return `${who}: ${BALLS[ev.color].name} 2개 가져감`;
-    case 'reserve': return `${who}: ${ev.source === 'deck' ? '덱 위 카드를' : `${name(ev.cardId)}을(를)`} 찜`;
+    case 'reserve': return `${who}: ${ev.source === 'deck' ? '덱 위 카드를' : `${name(ev.cardId)}을(를)`} 찜${ev.gotMaster ? ' (마스터볼 +1)' : ' (마스터볼 품절)'}`;
     case 'buy': return `${who}: ${name(ev.cardId)} 잡음!`;
     case 'discard': return `${who}: ${balls(ev.tokens)} 반환`;
     case 'evolve': return `${who}: ${name(ev.from)} → ${name(ev.to)} 진화!`;

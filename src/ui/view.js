@@ -1,12 +1,12 @@
 // Pure HTML-string renderers. Each takes the controller and returns markup; main.js owns the DOM.
 // All text interpolated here comes from our own card data / constants (no user input).
 
-import { COLORS, MASTER, PHASES, TOKEN_KEYS } from '../core/constants.js?v=1791269692';
-import { getBonuses, getPoints, tokenCount, bonusList, isSpecial } from '../core/engine.js?v=1791269692';
-import { BALLS, TRAINERS, evoText } from './controller.js?v=1791269692';
-import { dexSummary } from '../storage/store.js?v=1791269692';
-import { ACHIEVEMENTS } from '../data/achievements.js?v=1791269692';
-import { CHALLENGES, challengeProgress } from '../data/challenges.js?v=1791269692';
+import { COLORS, MASTER, PHASES, TOKEN_KEYS } from '../core/constants.js?v=1791271218';
+import { getBonuses, getPoints, tokenCount, bonusList, isSpecial } from '../core/engine.js?v=1791271218';
+import { BALLS, TRAINERS, evoText } from './controller.js?v=1791271218';
+import { dexSummary } from '../storage/store.js?v=1791271218';
+import { ACHIEVEMENTS } from '../data/achievements.js?v=1791271218';
+import { CHALLENGES, challengeProgress } from '../data/challenges.js?v=1791271218';
 
 const diffLabel = { easy: '쉬움', normal: '보통', hard: '어려움' };
 
@@ -25,6 +25,8 @@ const TRAINER_FACE = {
 export const trainerFaceSrc = (name) => TRAINER_FACE[name] ? `${ASSET}/trainers/${TRAINER_FACE[name]}.webp` : null;
 
 const ballImg = (key, cls = 'miniball') => `<img class="${cls}" src="${ballSrc(key)}" alt="${BALLS[key].name}">`;
+// Escape user-supplied text (multiplayer names). Card data is trusted; names are not.
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const staticSprite = (card, cls = 'tiny') => `<img class="${cls}" src="${pokeSrc(card.dex)}" alt="">`;
 const animSprite = (card) =>
   `<img class="sprite" src="${animSrc(card.dex)}" onerror="this.onerror=null;this.src='${pokeSrc(card.dex)}'" alt="${card.name}">`;
@@ -87,10 +89,12 @@ export function headerHTML(ctrl) {
   else if (ctrl.isHumanTurn) badge = '▶ 당신의 차례';
   else badge = `${ctrl.current.name} 차례`;
   const last = ctrl.lastRound ? `<div class="lastround">마지막 라운드! ${s.players[s.endTriggeredBy].name}이(가) 18점 달성</div>` : '';
+  const netbadge = ctrl.mp ? `<div class="netbadge">📡 대전 ${ctrl.mp.names.length}인</div>` : '';
   return `<div class="header">
       <div class="title">포켓몬 스플렌더<small>POKEMON SPLENDOR · DOT EDITION</small></div>
       <button class="rulesbtn" data-action="rules">룰 설명</button>
       <button class="rulesbtn opt" data-action="options" aria-label="설정">⚙</button>
+      ${netbadge}
       <div class="turn ${ctrl.isHumanTurn ? 'mine' : ''}">${badge}</div>
     </div>${last}`;
 }
@@ -107,7 +111,7 @@ export function opponentsHTML(ctrl) {
       .map((k) => `<span class="otp">${ballImg(k, 'mini2')}${p.tokens[k]}</span>`).join('');
     return `
     <button class="opp px ${s.current === p.id && !ctrl.finished ? 'active' : ''}" data-action="opp" data-id="${p.id}">
-      <div class="nm">${trainerFaceSrc(p.name) ? `<img class="tface" src="${trainerFaceSrc(p.name)}" alt="">` : ''}AI ${p.name}</div>
+      <div class="nm">${trainerFaceSrc(p.name) ? `<img class="tface" src="${trainerFaceSrc(p.name)}" alt="">` : ''}${p.isAI ? 'AI ' : '📡 '}${esc(p.name)}</div>
       <div class="sc">${getPoints(p)}</div>
       <div class="olbl2">보너스(할인)</div>
       <div class="pips">${bonusPips(p)}</div>
@@ -256,7 +260,7 @@ export function aiToastHTML(ctrl) {
     const to = ctrl.cardsById.get(ev.to);
     body = from && to ? `${staticSprite(from)} → ${staticSprite(to)}<b>진화!</b>` : '진화!';
   } else return '';
-  return `<div class="aitoast"><span class="who">AI ${p.name}</span><span class="what">${body}</span></div>`;
+  return `<div class="aitoast"><span class="who">${p.isAI ? 'AI ' : ''}${esc(p.name)}</span><span class="what">${body}</span></div>`;
 }
 
 // ---------- sheet + overlays ----------
@@ -275,7 +279,7 @@ function oppSheetHTML(p, ctrl) {
     ? p.hand.map((card) => `<button class="orsv" data-action="view-card" data-card="${card.id}" data-from="opp" data-pid="${p.id}">${staticSprite(card)}${card.name} <small>${tierLabel[card.tier]}${card.points ? ` · ${card.points}점` : ''}</small></button>`).join('')
     : '<div class="empty-note">없음</div>';
   return `<div class="sheet-back" data-action="close"></div><div class="sheet wide">
-    <div class="sheet-title">${trainerFaceSrc(p.name) ? `<img class="tface big" src="${trainerFaceSrc(p.name)}" alt="">` : ''}AI ${p.name} <small>· ${getPoints(p)}점 · 진화 ${p.evolved.length}회</small></div>
+    <div class="sheet-title">${trainerFaceSrc(p.name) ? `<img class="tface big" src="${trainerFaceSrc(p.name)}" alt="">` : ''}${p.isAI ? 'AI ' : ''}${esc(p.name)} <small>· ${getPoints(p)}점 · 진화 ${p.evolved.length}회</small></div>
     <div class="olbl">■ 보너스 (할인)</div>
     <div class="pips big">${COLORS.map((c) => `<span class="pip d-${c}">${ballImg(c, 'mini2')}${b[c]}</span>`).join('')}</div>
     <div class="olbl">■ 가진 볼 (${tokenCount(p)}/10)</div>
@@ -344,6 +348,8 @@ export function sheetHTML(ctrl) {
   }
   const canReserve = !inHand && !isSpecial(card) && ctrl.canReserve();
   const reserveNote = inHand ? '' : isSpecial(card) ? '희귀·전설은 찜 불가' : !ctrl.canReserve() ? '찜 한도(3장) 초과' : '';
+  const masterLeft = ctrl.state.supply[MASTER] > 0;
+  const reserveLabel = masterLeft ? '찜하기 (+마스터볼)' : '찜하기 (마스터볼 품절)';
   return `<div class="sheet-back" data-action="close"></div><div class="sheet">
     <div class="sheet-card">${cardHTML(card, ctrl, { interactive: false })}</div>
     <div class="sheet-info">
@@ -354,12 +360,12 @@ export function sheetHTML(ctrl) {
     </div>
     <div class="btnrow col">
       <button class="btn primary" data-action="buy" data-card="${card.id}" ${pay ? '' : 'disabled'}>포켓몬 잡기</button>
-      ${inHand ? '' : `<button class="btn alt" data-action="reserve" data-card="${card.id}" ${canReserve ? '' : 'disabled'}>찜하기 (+마스터볼)</button>`}
+      ${inHand ? '' : `<button class="btn alt" data-action="reserve" data-card="${card.id}" ${canReserve ? '' : 'disabled'}>${reserveLabel}</button>`}
       <button class="btn ghost" data-action="close">닫기</button>
     </div></div>`;
 }
 
-export function startHTML({ save = null, dex = null, cards = [], options = null } = {}) {
+export function startHTML({ save = null, dex = null, cards = [], options = null, notice = '' } = {}) {
   const sum = dex ? dexSummary(dex, cards) : null;
   const diff = options?.difficulty ?? 'normal';
   const resume = save
@@ -367,6 +373,7 @@ export function startHTML({ save = null, dex = null, cards = [], options = null 
     : '';
   return `<div class="overlay"><div class="panel">
     <div class="title big">포켓몬 스플렌더<small>POKEMON SPLENDOR · DOT EDITION</small></div>
+    ${notice ? `<p class="sheet-p warn">${esc(notice)}</p>` : ''}
     <p class="sheet-p">트레이너를 골라 AI 3명과 4인전을 시작해요.<br>18점을 먼저 모으는 트레이너가 승리!</p>
     ${resume}
     <div class="tiles">${TRAINERS.map((t, i) => `<button class="tile t${i}" data-action="start" data-name="${t}">${trainerFaceSrc(t) ? `<img class="tileface" src="${trainerFaceSrc(t)}" alt="">` : `<span class="tilebox"></span>`}${t}</button>`).join('')}</div>
@@ -384,6 +391,7 @@ export function startHTML({ save = null, dex = null, cards = [], options = null 
     <button class="btn alt" data-action="records">📊 기록</button>
     <button class="btn alt" data-action="challenge">🎯 챌린지</button></div>
     <div class="btnrow"><button class="btn primary" data-action="tutorial">튜토리얼 (처음 하세요?)</button></div>
+    <!-- <div class="btnrow"><button class="btn primary" data-action="net">📡 대전 (2~4인 멀티플레이)</button></div> -->
   </div></div>`;
 }
 
@@ -396,7 +404,7 @@ export function rulesHTML() {
       <h4>■ 내 차례에 하는 일 (하나만 선택)</h4>
       <p>① <b>서로 다른 볼 3개</b> 가져오기 (마스터볼 제외)<br>
       ② <b>같은 볼 2개</b> 가져오기 (공급처에 4개 이상 남았을 때만)<br>
-      ③ <b>카드 찜하기</b> (최대 3장, 마스터볼 1개를 받아요 · 희귀/전설은 찜 불가)<br>
+      ③ <b>카드 찜하기</b> (최대 3장, 마스터볼 1개를 받아요 · 마스터볼은 5개 한정이라 품절되면 찜만 돼요 · 희귀/전설은 찜 불가)<br>
       ④ <b>포켓몬 잡기</b> (볼을 내고 카드를 가져와요)<br>
       <span style="color:#4ade80">■</span> <b>초록 테두리</b>=지금 바로 잡을 수 있음 · <span style="color:#60a5fa">■</span> <b>파랑 테두리</b>=고른 볼을 가져가면 다음 턴에 잡을 수 있음</p>
       <h4>■ 보너스 = 할인</h4>
@@ -562,5 +570,79 @@ export function challengeEndHTML(won, challenge) {
     <p class="sheet-p">${won ? '목표를 달성했어요! 🎉' : `목표: ${challenge.desc}`}</p>
     <div class="btnrow"><button class="btn alt" data-action="challenge">다른 챌린지</button>
     <button class="btn primary" data-action="restart">타이틀로</button></div>
+  </div></div>`;
+}
+
+// ---------- multiplayer lobby ----------
+
+export function netHTML(net, notice = '') {
+  const roster = net.names.map((name, i) =>
+    `<div class="roster-row">${i === 0 ? '👑' : '🎮'} ${esc(name)}${i === net.myIndex ? ' (나)' : ''}</div>`).join('');
+  let body = '';
+  switch (net.phase) {
+    case 'menu':
+      body = `<p class="sheet-p">같은 와이파이에 있는 친구와 대전해요.<br>서버 없이 폰끼리 직접 연결돼요. (2~4인)</p>
+        <div class="btnrow"><button class="btn primary" data-action="net-host">방 만들기</button>
+        <button class="btn primary" data-action="net-join">참가하기</button></div>
+        <div class="btnrow"><button class="btn ghost" data-action="net-leave">닫기</button></div>`;
+      break;
+    case 'hostname':
+      body = `<p class="sheet-p">대전에서 쓸 이름을 입력하세요.</p>
+        <input id="netname" class="netinput" maxlength="12" placeholder="이름" value="${esc(net.myName)}">
+        <div class="btnrow"><button class="btn primary" data-action="net-host-create">방 만들기</button>
+        <button class="btn ghost" data-action="net-menu">뒤로</button></div>`;
+      break;
+    case 'busy':
+      body = `<p class="sheet-p">연결 중이에요...</p>`;
+      break;
+    case 'hostoffer':
+      body = `${roster ? `<div class="roster">${roster}</div>` : ''}
+        <p class="sheet-p">이 코드를 친구에게 보내주세요 (카톡 복붙).</p>
+        <textarea class="netcode" readonly id="netoffer">${net.offerCode}</textarea>
+        <div class="btnrow"><button class="btn alt" data-action="net-copy" data-from="netoffer">📋 복사</button></div>
+        <p class="sheet-p">친구가 준 코드를 아래에 붙여넣고 연결하세요.</p>
+        <textarea class="netcode" id="netanswer" placeholder="친구의 코드 붙여넣기"></textarea>
+        <div class="btnrow"><button class="btn primary" data-action="net-host-accept">연결하기</button>
+        ${net.names.length > 1 ? '<button class="btn alt" data-action="net-host-lobby">로비로</button>' : ''}
+        <button class="btn ghost" data-action="net-leave">나가기</button></div>`;
+      break;
+    case 'hostlobby':
+      body = `<div class="roster">${roster}</div>
+        <p class="sheet-p">${net.names.length}명 모였어요. (최대 4명)</p>
+        <div class="btnrow">
+        ${net.names.length < 4 ? '<button class="btn alt" data-action="net-host-invite">➕ 게스트 초대</button>' : ''}
+        <button class="btn primary" data-action="net-host-start" ${net.names.length < 2 ? 'disabled' : ''}>게임 시작</button>
+        <button class="btn ghost" data-action="net-leave">나가기</button></div>`;
+      break;
+    case 'guestname':
+      body = `<p class="sheet-p">대전에서 쓸 이름을 입력하세요.</p>
+        <input id="netname" class="netinput" maxlength="12" placeholder="이름" value="${esc(net.myName)}">
+        <div class="btnrow"><button class="btn primary" data-action="net-guest-next">다음</button>
+        <button class="btn ghost" data-action="net-menu">뒤로</button></div>`;
+      break;
+    case 'guestjoin':
+      body = `<p class="sheet-p">방장이 준 코드를 붙여넣으세요.</p>
+        <textarea class="netcode" id="netoffer" placeholder="방장의 코드 붙여넣기"></textarea>
+        <div class="btnrow"><button class="btn primary" data-action="net-guest-join">참가하기</button>
+        <button class="btn ghost" data-action="net-menu">뒤로</button></div>`;
+      break;
+    case 'guestanswer':
+      body = `<p class="sheet-p">이 코드를 방장에게 보내주세요.<br>방장이 입력하면 자동으로 연결돼요.</p>
+        <textarea class="netcode" readonly id="netanswer2">${net.answerCode}</textarea>
+        <div class="btnrow"><button class="btn alt" data-action="net-copy" data-from="netanswer2">📋 복사</button>
+        <button class="btn ghost" data-action="net-leave">나가기</button></div>`;
+      break;
+    case 'guestlobby':
+      body = `<div class="roster">${roster}</div>
+        <p class="sheet-p">방장이 게임을 시작하기를 기다리는 중...</p>
+        <div class="btnrow"><button class="btn ghost" data-action="net-leave">나가기</button></div>`;
+      break;
+    default:
+      body = '';
+  }
+  return `<div class="overlay"><div class="panel netpanel">
+    <div class="title">📡 대전 <small>같은 와이파이 멀티플레이</small></div>
+    ${notice ? `<p class="sheet-p warn">${esc(notice)}</p>` : ''}
+    ${body}
   </div></div>`;
 }

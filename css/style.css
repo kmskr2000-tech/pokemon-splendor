@@ -398,3 +398,27 @@ button.orsv:hover { border-color: #4ade80; }
 .opp .nm { display: flex; align-items: center; }
 
 .tileface { display: block; width: 56px; height: 56px; margin: 0 auto 8px; border: 3px solid var(--ink); border-radius: 8px; object-fit: cover; }
+
+/* ---------- multiplayer lobby ---------- */
+.netpanel { max-width: 480px; }
+.netinput {
+  width: 100%; box-sizing: border-box; padding: 10px; font-size: 16px;
+  border: 3px solid var(--ink, #1a1a2e); border-radius: 8px; margin: 8px 0;
+  font-family: inherit;
+}
+.netcode {
+  width: 100%; box-sizing: border-box; min-height: 84px; padding: 8px; font-size: 11px;
+  font-family: monospace; word-break: break-all;
+  border: 3px solid var(--ink, #1a1a2e); border-radius: 8px; margin: 4px 0 8px;
+  background: #f4f4f8; color: #1a1a2e; resize: vertical;
+}
+.roster { margin: 8px 0; display: flex; flex-direction: column; gap: 6px; }
+.roster-row {
+  background: #2a2a45; border: 3px solid #1a1a2e; border-radius: 8px;
+  padding: 8px 12px; font-size: 15px; color: #fff;
+}
+.netbadge {
+  font-size: 12px; color: #fef3c7; background: #3b2f0b;
+  border: 2px solid #fbbf24; border-radius: 6px; padding: 2px 8px; margin-left: 8px;
+  display: inline-block;
+}

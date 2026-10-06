@@ -15,13 +15,14 @@
   } catch { /* offline or first deploy: stay put */ }
 })();
 
-import { CARDS } from '../data/cards.js?v=1791269692';
-import { ACHIEVEMENTS, checkAchievements } from '../data/achievements.js?v=1791269692';
-import { CHALLENGES, challengeWon } from '../data/challenges.js?v=1791269692';
-import { createController } from './controller.js?v=1791269692';
-import * as V from './view.js?v=1791269692';
-import { getBonuses, getPoints, bonusList } from '../core/engine.js?v=1791269692';
-import { browserStorage, loadDex, loadSave, saveGame, clearSave, recordCatch, recordGame, loadOptions, saveOptions, loadAchv, unlockAchv, loadRecords, recordResult, victoryScore, loadChal, completeChal } from '../storage/store.js?v=1791269692';
+import { CARDS } from '../data/cards.js?v=1791271218';
+import { ACHIEVEMENTS, checkAchievements } from '../data/achievements.js?v=1791271218';
+import { CHALLENGES, challengeWon } from '../data/challenges.js?v=1791271218';
+import { createController } from './controller.js?v=1791271218';
+import * as V from './view.js?v=1791271218';
+import { NetSession } from '../net/session.js?v=1791271218';
+import { getBonuses, getPoints, bonusList } from '../core/engine.js?v=1791271218';
+import { browserStorage, loadDex, loadSave, saveGame, clearSave, recordCatch, recordGame, loadOptions, saveOptions, loadAchv, unlockAchv, loadRecords, recordResult, victoryScore, loadChal, completeChal } from '../storage/store.js?v=1791271218';
 
 const params = new URLSearchParams(location.search);
 const AI_DELAY = params.has('fast') ? 0 : 1600; // ?fast=1 skips the pacing delay (tests)
@@ -43,6 +44,8 @@ const regions = {
 const cache = {};
 let ctrl = null;
 let aiTimer = null;
+let net = null; // NetSession while in multiplayer menu/lobby/game
+let netNotice = ''; // one-shot notice shown on the start/net screen
 let dexOpen = false;
 let rulesOpen = false;
 let achvOpen = false;
@@ -64,7 +67,14 @@ function setHTML(id, html) {
 function render() {
   checkChallenge();
   if (ctrl) for (const [id, fn] of Object.values(regions)) setHTML(id, fn(ctrl));
-  let overlay = !ctrl ? V.startHTML({ save: loadSave(storage, CARDS), dex: loadDex(storage), cards: CARDS, options }) : ctrl.finished ? V.endHTML(ctrl) : '';
+  let overlay;
+  if (net && !ctrl) {
+    overlay = V.netHTML(net, netNotice);
+    netNotice = '';
+  } else {
+    overlay = !ctrl ? V.startHTML({ save: loadSave(storage, CARDS), dex: loadDex(storage), cards: CARDS, options, notice: netNotice }) : ctrl.finished ? V.endHTML(ctrl) : '';
+    netNotice = '';
+  }
   if (ctrl?.challengeDone) overlay = V.challengeEndHTML(ctrl.challengeDone === 'won', ctrl.challenge);
   if (dexOpen) overlay = V.dexHTML(loadDex(storage), CARDS);
   else if (rulesOpen) overlay = V.rulesHTML();
