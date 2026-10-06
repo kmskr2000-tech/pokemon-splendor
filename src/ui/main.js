@@ -284,7 +284,14 @@ document.addEventListener('click', (e) => {
       }
       break;
     case 'opp': ctrl.openOpp(d.id); break;
-    case 'view-card': ctrl.viewCard(d.card); break;
+    case 'view-card':
+      ctrl.viewCard(d.card, d.from === 'opp' ? { kind: 'opp', playerId: Number(d.pid) } : null);
+      break;
+    case 'view-back': {
+      const from = ctrl.sheet && ctrl.sheet.from;
+      ctrl.sheet = from || null;
+      break;
+    }
     case 'restart': ctrl = null; tutorial = null; optionsOpen = false; clearTimeout(aiTimer); aiTimer = null; break;
     case 'tutorial': startTutorial(); return;
     case 'tut-next': tutAdvance(); return;

@@ -260,10 +260,10 @@ function oppSheetHTML(p, ctrl) {
     const list = p.tableau.filter((card) => bonusList(card)[0] === c);
     if (!list.length) return '';
     return `<div class="grp g-${c}">${list.map((card) => `
-      <span class="mp">${staticSprite(card)}<span>${card.name}${card.points ? ` <i>${card.points}점</i>` : ''}</span></span>`).join('')}</div>`;
+      <button class="mp" data-action="view-card" data-card="${card.id}" data-from="opp" data-pid="${p.id}">${staticSprite(card)}<span>${card.name}${card.points ? ` <i>${card.points}점</i>` : ''}</span></button>`).join('')}</div>`;
   }).join('');
   const hand = p.hand.length
-    ? p.hand.map((card) => `<div class="orsv">${staticSprite(card)}${card.name} <small>${tierLabel[card.tier]}${card.points ? ` · ${card.points}점` : ''}</small></div>`).join('')
+    ? p.hand.map((card) => `<button class="orsv" data-action="view-card" data-card="${card.id}" data-from="opp" data-pid="${p.id}">${staticSprite(card)}${card.name} <small>${tierLabel[card.tier]}${card.points ? ` · ${card.points}점` : ''}</small></button>`).join('')
     : '<div class="empty-note">없음</div>';
   return `<div class="sheet-back" data-action="close"></div><div class="sheet wide">
     <div class="sheet-title">AI ${p.name} <small>· ${getPoints(p)}점 · 진화 ${p.evolved.length}회</small></div>
@@ -302,6 +302,8 @@ export function sheetHTML(ctrl) {
   if (sh.kind === 'view') {
     const card = ctrl.cardsById.get(sh.cardId);
     if (!card) return '';
+    const backBtn = sh.from && sh.from.kind === 'opp'
+      ? `<button class="btn alt" data-action="view-back">← 상대 정보로</button>` : '';
     return `<div class="sheet-back" data-action="close"></div><div class="sheet">
       <div class="sheet-card">${cardHTML(card, ctrl, { interactive: false })}</div>
       <div class="sheet-info">
@@ -311,7 +313,7 @@ export function sheetHTML(ctrl) {
         <div class="paylbl">진화 정보</div>
         <div class="evoinfo">${evoText(card, ctrl.cardsById)}</div>
       </div>
-      <div class="btnrow"><button class="btn primary" data-action="close">닫기</button></div></div>`;
+      <div class="btnrow">${backBtn}<button class="btn primary" data-action="close">닫기</button></div></div>`;
   }
   if (sh.kind === 'deck') {
     return `<div class="sheet-back" data-action="close"></div><div class="sheet">

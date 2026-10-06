@@ -389,3 +389,6 @@ button.mp { cursor: pointer; }
 }
 .chalrow small { color: #a8a8c0; }
 .chalicon { font-size: 20px; }
+
+button.orsv { cursor: pointer; width: 100%; text-align: left; font: inherit; }
+button.orsv:hover { border-color: #4ade80; }

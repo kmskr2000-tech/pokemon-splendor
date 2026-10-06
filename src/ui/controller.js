@@ -205,8 +205,8 @@ export function createController({ cards, seed, humanName = 'ë‚˜', aiNames = ['ì
     openOpp(playerId) {
       this.sheet = { kind: 'opp', playerId: Number(playerId) };
     },
-    viewCard(cardId) {
-      if (this.cardsById.has(cardId)) this.sheet = { kind: 'view', cardId };
+    viewCard(cardId, from = null) {
+      if (this.cardsById.has(cardId)) this.sheet = { kind: 'view', cardId, from };
     },
     closeSheet() { this.sheet = null; },
 
