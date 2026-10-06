@@ -103,7 +103,7 @@ export function loadSave(storage, cards) {
 // ---------- Options ----------
 // { v:1, beginnerHelp: bool }
 
-const defaultOptions = () => ({ v: 1, beginnerHelp: true, difficulty: 'normal', personality: 'random' });
+const defaultOptions = () => ({ v: 1, beginnerHelp: true, difficulty: 'normal', personality: 'random', playerName: '' });
 
 const DIFFS = new Set(['easy', 'normal', 'hard']);
 const PERSS = new Set(['random', 'specialized', 'opportunistic', 'balanced']);
@@ -116,6 +116,7 @@ export function loadOptions(storage) {
     beginnerHelp: o.beginnerHelp !== false,
     difficulty: DIFFS.has(o.difficulty) ? o.difficulty : 'normal',
     personality: PERSS.has(o.personality) ? o.personality : 'random',
+    playerName: typeof o.playerName === 'string' ? o.playerName.slice(0, 12) : '',
   };
 }
 
@@ -125,6 +126,7 @@ export function saveOptions(storage, opts) {
     beginnerHelp: !!opts.beginnerHelp,
     difficulty: DIFFS.has(opts.difficulty) ? opts.difficulty : 'normal',
     personality: PERSS.has(opts.personality) ? opts.personality : 'random',
+    playerName: typeof opts.playerName === 'string' ? opts.playerName.slice(0, 12) : '',
   });
 }
 

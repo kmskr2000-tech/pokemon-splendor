@@ -1,12 +1,12 @@
 // Pure HTML-string renderers. Each takes the controller and returns markup; main.js owns the DOM.
 // All text interpolated here comes from our own card data / constants (no user input).
 
-import { COLORS, MASTER, PHASES, TOKEN_KEYS } from '../core/constants.js?v=1791271831';
-import { getBonuses, getPoints, tokenCount, bonusList, isSpecial } from '../core/engine.js?v=1791271831';
-import { BALLS, TRAINERS, evoText } from './controller.js?v=1791271831';
-import { dexSummary } from '../storage/store.js?v=1791271831';
-import { ACHIEVEMENTS } from '../data/achievements.js?v=1791271831';
-import { CHALLENGES, challengeProgress } from '../data/challenges.js?v=1791271831';
+import { COLORS, MASTER, PHASES, TOKEN_KEYS } from '../core/constants.js?v=1791272191';
+import { getBonuses, getPoints, tokenCount, bonusList, isSpecial } from '../core/engine.js?v=1791272191';
+import { BALLS, TRAINERS, evoText } from './controller.js?v=1791272191';
+import { dexSummary } from '../storage/store.js?v=1791272191';
+import { ACHIEVEMENTS } from '../data/achievements.js?v=1791272191';
+import { CHALLENGES, challengeProgress } from '../data/challenges.js?v=1791272191';
 
 const diffLabel = { easy: '쉬움', normal: '보통', hard: '어려움' };
 
@@ -592,7 +592,7 @@ export function netHTML(net, notice = '') {
       break;
     }
     case 'hostname':
-      body = `<p class="sheet-p">대전에서 쓸 이름을 입력하세요.</p>
+      body = `<p class="sheet-p">대전에서 쓸 이름을 입력하세요.<br><small>한 번 정하면 다음부터 자동 입력돼요.</small></p>
         <input id="netname" class="netinput" maxlength="12" placeholder="이름" value="${esc(net.myName)}">
         <div class="btnrow"><button class="btn primary" data-action="net-host-create">방 만들기</button>
         <button class="btn ghost" data-action="net-menu">뒤로</button></div>`;
@@ -625,7 +625,7 @@ export function netHTML(net, notice = '') {
       break;
     }
     case 'guestname':
-      body = `<p class="sheet-p">대전에서 쓸 이름을 입력하세요.</p>
+      body = `<p class="sheet-p">대전에서 쓸 이름을 입력하세요.<br><small>한 번 정하면 다음부터 자동 입력돼요.</small></p>
         <input id="netname" class="netinput" maxlength="12" placeholder="이름" value="${esc(net.myName)}">
         <div class="btnrow"><button class="btn primary" data-action="net-guest-next">다음</button>
         <button class="btn ghost" data-action="net-menu">뒤로</button></div>`;

@@ -15,14 +15,14 @@
   } catch { /* offline or first deploy: stay put */ }
 })();
 
-import { CARDS } from '../data/cards.js?v=1791271831';
-import { ACHIEVEMENTS, checkAchievements } from '../data/achievements.js?v=1791271831';
-import { CHALLENGES, challengeWon } from '../data/challenges.js?v=1791271831';
-import { createController } from './controller.js?v=1791271831';
-import * as V from './view.js?v=1791271831';
-import { NetSession } from '../net/session.js?v=1791271831';
-import { getBonuses, getPoints, bonusList } from '../core/engine.js?v=1791271831';
-import { browserStorage, loadDex, loadSave, saveGame, clearSave, recordCatch, recordGame, loadOptions, saveOptions, loadAchv, unlockAchv, loadRecords, recordResult, victoryScore, loadChal, completeChal } from '../storage/store.js?v=1791271831';
+import { CARDS } from '../data/cards.js?v=1791272191';
+import { ACHIEVEMENTS, checkAchievements } from '../data/achievements.js?v=1791272191';
+import { CHALLENGES, challengeWon } from '../data/challenges.js?v=1791272191';
+import { createController } from './controller.js?v=1791272191';
+import * as V from './view.js?v=1791272191';
+import { NetSession } from '../net/session.js?v=1791272191';
+import { getBonuses, getPoints, bonusList } from '../core/engine.js?v=1791272191';
+import { browserStorage, loadDex, loadSave, saveGame, clearSave, recordCatch, recordGame, loadOptions, saveOptions, loadAchv, unlockAchv, loadRecords, recordResult, victoryScore, loadChal, completeChal } from '../storage/store.js?v=1791272191';
 
 const params = new URLSearchParams(location.search);
 const AI_DELAY = params.has('fast') ? 0 : 1600; // ?fast=1 skips the pacing delay (tests)
@@ -294,7 +294,17 @@ function openNet() {
     onGameEnd: () => { net = null; ctrl = null; render(); },
     onNotice: (msg) => { netNotice = msg; render(); },
   });
+  net.myName = options.playerName || ''; // pre-fill saved name
   render();
+}
+
+function savePlayerName(name) {
+  const clean = String(name || '').trim().slice(0, 12);
+  if (clean && clean !== options.playerName) {
+    options.playerName = clean;
+    saveOptions(storage, options);
+  }
+  return clean || '트레이너';
 }
 
 const netInputVal = (id) => document.getElementById(id)?.value ?? '';
@@ -349,12 +359,12 @@ document.addEventListener('click', (e) => {
     case 'net-join': if (net) { net.usePeer = true; net.phase = 'guestname'; netNotice = ''; } break;
     case 'net-manual': if (net) { net.usePeer = false; net.phase = 'menu'; netNotice = '수동 연결 모드: 코드를 두 번 주고받아야 해요.'; } break;
     case 'net-peer': if (net) { net.usePeer = true; net.phase = 'menu'; netNotice = ''; } break;
-    case 'net-host-create': if (net) { netNotice = ''; net.hostCreate(netInputVal('netname')); return; } break;
+    case 'net-host-create': if (net) { netNotice = ''; net.hostCreate(savePlayerName(netInputVal('netname'))); return; } break;
     case 'net-host-invite': if (net) { netNotice = ''; net.hostInvite(); return; } break;
     case 'net-host-accept': if (net) { netNotice = ''; net.hostAcceptAnswer(netInputVal('netanswer')); return; } break;
     case 'net-host-lobby': if (net) { net.phase = 'hostlobby'; netNotice = ''; } break;
     case 'net-host-start': if (net) { netNotice = ''; net.hostStart(); } break;
-    case 'net-guest-next': if (net) { net.myName = net.cleanName(netInputVal('netname')); net.phase = 'guestjoin'; netNotice = ''; } break;
+    case 'net-guest-next': if (net) { net.myName = savePlayerName(netInputVal('netname')); net.phase = 'guestjoin'; netNotice = ''; } break;
     case 'net-guest-join': if (net) { netNotice = ''; net.guestJoin(net.myName, netInputVal('netoffer')); return; } break;
     case 'net-copy': {
       const t = document.getElementById(d.from);
