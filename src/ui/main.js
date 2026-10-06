@@ -1,9 +1,12 @@
 // DOM glue: renders controller state into regions, wires taps, and paces AI turns.
 
 import { CARDS } from '../data/cards.js';
+import { ACHIEVEMENTS, checkAchievements } from '../data/achievements.js';
+import { CHALLENGES, challengeWon } from '../data/challenges.js';
 import { createController } from './controller.js';
 import * as V from './view.js';
-import { browserStorage, loadDex, loadSave, saveGame, clearSave, recordCatch, recordGame, loadOptions, saveOptions } from '../storage/store.js';
+import { getBonuses, getPoints, bonusList } from '../core/engine.js';
+import { browserStorage, loadDex, loadSave, saveGame, clearSave, recordCatch, recordGame, loadOptions, saveOptions, loadAchv, unlockAchv, loadRecords, recordResult, victoryScore, loadChal, completeChal } from '../storage/store.js';
 
 const params = new URLSearchParams(location.search);
 const AI_DELAY = params.has('fast') ? 0 : 1600; // ?fast=1 skips the pacing delay (tests)
@@ -13,6 +16,7 @@ const regions = {
   header: ['header', V.headerHTML],
   tutorial: ['tutorial', () => V.tutorialHTML(tutorial)],
   help: ['help', () => V.helpHTML(ctrl, options, tutorial)],
+  chbanner: ['chbanner', () => V.challengeBannerHTML(ctrl)],
   opponents: ['opponents', V.opponentsHTML],
   board: ['board', V.boardHTML],
   supply: ['supply', V.supplyHTML],
@@ -26,6 +30,9 @@ let ctrl = null;
 let aiTimer = null;
 let dexOpen = false;
 let rulesOpen = false;
+let achvOpen = false;
+let recordsOpen = false;
+let chalOpen = false;
 let tutorial = null; // { step } — guided first-game tutorial
 let optionsOpen = false;
 const storage = browserStorage();
@@ -40,13 +47,30 @@ function setHTML(id, html) {
 }
 
 function render() {
+  checkChallenge();
   if (ctrl) for (const [id, fn] of Object.values(regions)) setHTML(id, fn(ctrl));
   let overlay = !ctrl ? V.startHTML({ save: loadSave(storage, CARDS), dex: loadDex(storage), cards: CARDS, options }) : ctrl.finished ? V.endHTML(ctrl) : '';
+  if (ctrl?.challengeDone) overlay = V.challengeEndHTML(ctrl.challengeDone === 'won', ctrl.challenge);
   if (dexOpen) overlay = V.dexHTML(loadDex(storage), CARDS);
   else if (rulesOpen) overlay = V.rulesHTML();
+  else if (achvOpen) overlay = V.achvHTML(loadAchv(storage).unlocked);
+  else if (recordsOpen) overlay = V.recordsHTML(loadRecords(storage));
+  else if (chalOpen) overlay = V.challengeListHTML(loadChal(storage).completed);
   else if (optionsOpen) overlay = V.optionsHTML(options);
   setHTML('overlay', overlay);
   scheduleAI();
+}
+
+// Resolves challenge win/lose. Win: goal met. Lose: turn limit hit or normal game end.
+function checkChallenge() {
+  if (!ctrl?.challenge || ctrl.challengeDone) return;
+  if (ctrl.finished) { ctrl.challengeDone = 'lost'; return; }
+  if (challengeWon(ctrl.challenge, ctrl, getPoints, bonusList)) {
+    ctrl.challengeDone = 'won';
+    completeChal(storage, ctrl.challenge.id);
+    return;
+  }
+  if (ctrl.humanTurns >= ctrl.challenge.maxTurns) ctrl.challengeDone = 'lost';
 }
 
 function scheduleAI() {
@@ -125,16 +149,66 @@ function animateAIFromSnap(snap) {
   }
 }
 
+const cardsById = new Map(CARDS.map((c) => [c.id, c]));
+let caughtLegend = false; // this game's legend catch flag (for achievements)
+let achvToasts = []; // newly unlocked achievements waiting to toast
+let achvToastTimer = null;
+
+function queueAchvToasts(list) {
+  achvToasts = achvToasts.concat(list);
+  renderAchvToast();
+}
+
+function renderAchvToast() {
+  const el = document.getElementById('achvtoast');
+  if (!el) return;
+  const a = achvToasts[0];
+  el.innerHTML = a ? `<div class="achvtoast-in"><span class="achvicon">${a.icon}</span><div><b>업적 달성!</b><br>${a.name}</div></div>` : '';
+  el.style.display = a ? 'block' : 'none';
+  clearTimeout(achvToastTimer);
+  if (a) achvToastTimer = setTimeout(() => { achvToasts = achvToasts.slice(1); renderAchvToast(); }, 3000);
+}
+
 const hooks = {
-  onCatch: (cardId, kind) => recordCatch(storage, cardId, kind),
-  onChange: () => { if (ctrl && !ctrl.finished) saveGame(storage, ctrl.snapshot()); },
-  onEnd: (won) => { recordGame(storage, won); clearSave(storage); },
+  onCatch: (cardId, kind) => {
+    recordCatch(storage, cardId, kind);
+    const card = cardsById.get(cardId);
+    if (card && (card.tier === 'rare' || card.tier === 'legend')) caughtLegend = true;
+  },
+  onChange: () => { if (ctrl && !ctrl.finished && !ctrl.challenge) saveGame(storage, ctrl.snapshot()); },
+  onEnd: (won) => {
+    recordGame(storage, won);
+    if (ctrl) {
+      const me = ctrl.me;
+      const bonusColors = new Set();
+      for (const card of me.tableau) for (const b of bonusList(card)) bonusColors.add(b);
+      const ctx = {
+        won,
+        turns: ctrl.game.turn,
+        evolutions: me.evolved.length,
+        difficulty: ctrl.difficulty,
+        points: getPoints(me),
+        bonusColors,
+        caughtLegend,
+      };
+      const newly = checkAchievements(ctx, loadAchv(storage).unlocked);
+      if (newly.length) {
+        unlockAchv(storage, newly.map((a) => a.id));
+        queueAchvToasts(newly);
+      }
+      const rec = recordResult(storage, { won, points: ctx.points, turns: ctx.turns, difficulty: ctx.difficulty });
+      ctrl.lastScore = rec.score;
+      ctrl.lastBest = rec.isBest;
+    }
+    clearSave(storage);
+    caughtLegend = false;
+  },
 };
 
 function resumeGame() {
   const save = loadSave(storage, CARDS);
   if (!save) return;
-  ctrl = createController({ cards: CARDS, seed: save.seed, humanName: save.humanName, aiNames: save.aiNames, resume: { game: save.game, log: save.log, difficulty: save.difficulty }, hooks });
+  ctrl = createController({ cards: CARDS, seed: save.seed, humanName: save.humanName, aiNames: save.aiNames, resume: { game: save.game, log: save.log, difficulty: save.difficulty, personality: save.personality }, hooks });
   Object.keys(cache).forEach((k) => delete cache[k]);
   window.__ctrl = ctrl;
   render();
@@ -158,10 +232,24 @@ function startGame(humanName) {
   const seed = seedParam !== null ? Number(seedParam) : (crypto.getRandomValues(new Uint32Array(1))[0] || 1);
   const aiNames = AI_NAMES.filter((n) => n !== humanName).slice(0, 3);
   clearSave(storage); // a new game replaces any saved one
-  ctrl = createController({ cards: CARDS, seed, humanName, aiNames, hooks, difficulty: options.difficulty });
+  ctrl = createController({ cards: CARDS, seed, humanName, aiNames, hooks, difficulty: options.difficulty, personality: options.personality });
   saveGame(storage, ctrl.snapshot());
   Object.keys(cache).forEach((k) => delete cache[k]);
   window.__ctrl = ctrl; // debugging / automated tests
+  render();
+}
+
+function startChallenge(id) {
+  const ch = CHALLENGES.find((c) => c.id === id);
+  if (!ch) return;
+  chalOpen = false;
+  tutorial = null;
+  clearSave(storage); // challenges don't use the save slot
+  const seed = (crypto.getRandomValues(new Uint32Array(1))[0] || 1);
+  ctrl = createController({ cards: CARDS, seed, humanName: '나', aiNames: AI_NAMES.slice(0, 3), hooks, difficulty: ch.difficulty, personality: options.personality, challenge: ch });
+  ctrl.applyChallengeSetup(ch);
+  Object.keys(cache).forEach((k) => delete cache[k]);
+  window.__ctrl = ctrl;
   render();
 }
 
@@ -176,6 +264,13 @@ document.addEventListener('click', (e) => {
     case 'dex-close': dexOpen = false; break;
     case 'rules': rulesOpen = true; break;
     case 'rules-close': rulesOpen = false; break;
+    case 'achv': achvOpen = true; break;
+    case 'achv-close': achvOpen = false; break;
+    case 'records': recordsOpen = true; break;
+    case 'records-close': recordsOpen = false; break;
+    case 'challenge': chalOpen = true; break;
+    case 'challenge-close': chalOpen = false; break;
+    case 'challenge-start': startChallenge(d.id); return;
     case 'options': optionsOpen = true; break;
     case 'options-close': optionsOpen = false; break;
     case 'toggle-help':
@@ -185,6 +280,12 @@ document.addEventListener('click', (e) => {
     case 'difficulty':
       if (['easy', 'normal', 'hard'].includes(d.v)) {
         options.difficulty = d.v;
+        saveOptions(storage, options);
+      }
+      break;
+    case 'personality':
+      if (['random', 'specialized', 'opportunistic', 'balanced'].includes(d.v)) {
+        options.personality = d.v;
         saveOptions(storage, options);
       }
       break;

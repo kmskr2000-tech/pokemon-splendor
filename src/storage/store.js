@@ -5,6 +5,8 @@
 export const DEX_KEY = 'pks-dex-v1';
 export const SAVE_KEY = 'pks-save-v1';
 export const OPTS_KEY = 'pks-opts-v1';
+export const ACHV_KEY = 'pks-achv-v1';
+export const RECORDS_KEY = 'pks-records-v1';
 
 export function browserStorage() {
   try { return globalThis.localStorage ?? null; } catch { return null; }
@@ -101,16 +103,102 @@ export function loadSave(storage, cards) {
 // ---------- Options ----------
 // { v:1, beginnerHelp: bool }
 
-const defaultOptions = () => ({ v: 1, beginnerHelp: true, difficulty: 'normal' });
+const defaultOptions = () => ({ v: 1, beginnerHelp: true, difficulty: 'normal', personality: 'random' });
 
 const DIFFS = new Set(['easy', 'normal', 'hard']);
+const PERSS = new Set(['random', 'specialized', 'opportunistic', 'balanced']);
 
 export function loadOptions(storage) {
   const o = readJSON(storage, OPTS_KEY);
   if (!isObj(o)) return defaultOptions();
-  return { v: 1, beginnerHelp: o.beginnerHelp !== false, difficulty: DIFFS.has(o.difficulty) ? o.difficulty : 'normal' };
+  return {
+    v: 1,
+    beginnerHelp: o.beginnerHelp !== false,
+    difficulty: DIFFS.has(o.difficulty) ? o.difficulty : 'normal',
+    personality: PERSS.has(o.personality) ? o.personality : 'random',
+  };
 }
 
 export function saveOptions(storage, opts) {
-  writeJSON(storage, OPTS_KEY, { v: 1, beginnerHelp: !!opts.beginnerHelp, difficulty: DIFFS.has(opts.difficulty) ? opts.difficulty : 'normal' });
+  writeJSON(storage, OPTS_KEY, {
+    v: 1,
+    beginnerHelp: !!opts.beginnerHelp,
+    difficulty: DIFFS.has(opts.difficulty) ? opts.difficulty : 'normal',
+    personality: PERSS.has(opts.personality) ? opts.personality : 'random',
+  });
+}
+
+// ---------- Achievements ----------
+// { v:1, unlocked: { [id]: timestamp } }
+
+export function loadAchv(storage) {
+  const o = readJSON(storage, ACHV_KEY);
+  if (!isObj(o) || !isObj(o.unlocked)) return { v: 1, unlocked: {} };
+  return { v: 1, unlocked: o.unlocked };
+}
+
+export function unlockAchv(storage, ids, now = Date.now()) {
+  const a = loadAchv(storage);
+  let changed = false;
+  for (const id of ids) {
+    if (!a.unlocked[id]) { a.unlocked[id] = now; changed = true; }
+  }
+  if (changed) writeJSON(storage, ACHV_KEY, a);
+  return changed;
+}
+
+// ---------- Records ----------
+// Victory score: win ? 1000 + points*10 + max(0, 60-turns)*5 + diffBonus : points*10
+// { v:1, best: number, games: number, wins: number, history: [{score, won, points, turns, difficulty, date}] }
+
+const DIFF_BONUS = { easy: 0, normal: 100, hard: 200 };
+
+export function victoryScore({ won, points, turns, difficulty }) {
+  const base = points * 10 + Math.max(0, 60 - turns) * 5 + (DIFF_BONUS[difficulty] ?? 0);
+  return won ? 1000 + base : base;
+}
+
+export function loadRecords(storage) {
+  const o = readJSON(storage, RECORDS_KEY);
+  if (!isObj(o)) return { v: 1, best: 0, games: 0, wins: 0, history: [] };
+  return {
+    v: 1,
+    best: typeof o.best === 'number' ? o.best : 0,
+    games: typeof o.games === 'number' ? o.games : 0,
+    wins: typeof o.wins === 'number' ? o.wins : 0,
+    history: Array.isArray(o.history) ? o.history.slice(-20) : [],
+  };
+}
+
+export function recordResult(storage, result, now = Date.now()) {
+  const r = loadRecords(storage);
+  const score = victoryScore(result);
+  r.games += 1;
+  if (result.won) r.wins += 1;
+  r.best = Math.max(r.best, score);
+  r.history.push({ score, ...result, date: now });
+  r.history = r.history.slice(-20);
+  writeJSON(storage, RECORDS_KEY, r);
+  return { score, isBest: score >= r.best && score > 0 };
+}
+
+// ---------- Challenges ----------
+// { v:1, completed: { [id]: timestamp } }
+
+export const CHAL_KEY = 'pks-chal-v1';
+
+export function loadChal(storage) {
+  const o = readJSON(storage, CHAL_KEY);
+  if (!isObj(o) || !isObj(o.completed)) return { v: 1, completed: {} };
+  return { v: 1, completed: o.completed };
+}
+
+export function completeChal(storage, id, now = Date.now()) {
+  const c = loadChal(storage);
+  if (!c.completed[id]) {
+    c.completed[id] = now;
+    writeJSON(storage, CHAL_KEY, c);
+    return true;
+  }
+  return false;
 }

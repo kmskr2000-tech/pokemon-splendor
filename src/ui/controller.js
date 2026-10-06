@@ -40,7 +40,7 @@ export const errorText = (code) => ERROR_TEXT[code] ?? `실행할 수 없어요 
 // `resume` ({ game, log }) restores a saved game instead of dealing a new one.
 // `hooks.onCatch(cardId, kind)` fires for the human's captures/evolutions, `hooks.onChange()` after
 // every accepted action, `hooks.onEnd(won)` once when the game finishes (persistence lives outside).
-export function createController({ cards, seed, humanName = '나', aiNames = ['지우', '이슬', '웅이'], resume = null, hooks = {}, difficulty = 'normal' }) {
+export function createController({ cards, seed, humanName = '나', aiNames = ['지우', '이슬', '웅이'], resume = null, hooks = {}, difficulty = 'normal', personality = 'random', challenge = null }) {
   const cardsById = new Map(cards.map((c) => [c.id, c]));
   const game = resume?.game ?? createGame({
     cards,
@@ -62,6 +62,10 @@ export function createController({ cards, seed, humanName = '나', aiNames = ['�
     humanName,
     aiNames,
     difficulty: resume?.difficulty ?? difficulty,
+    personality: resume?.personality ?? personality,
+    challenge: resume?.challenge ?? challenge,
+    challengeDone: null, // 'won' | 'lost' once the challenge resolves
+    humanTurns: 0, // completed turns by the human (for challenge limits)
     errors: 0, // failed applyAction calls (tests assert 0 for UI-generated actions)
 
     get state() { return this.game; },
@@ -99,6 +103,17 @@ export function createController({ cards, seed, humanName = '나', aiNames = ['�
     },
     canBuy(cardId) {
       return this.isHumanTurn && this.game.phase === PHASES.ACTION && !!this.payment(cardId);
+    },
+    // Affordable if the currently selected balls were taken (blue highlight:
+    // "buyable next turn"). False when already buyable now or nothing selected.
+    canBuyAfterTake(cardId) {
+      if (!this.isHumanTurn || this.game.phase !== PHASES.ACTION || !this.balls.length) return false;
+      if (this.canBuy(cardId)) return false;
+      const card = this.cardsById.get(cardId);
+      if (!card) return false;
+      const hypo = { ...this.me, tokens: { ...this.me.tokens } };
+      for (const c of this.balls) hypo.tokens[c] = (hypo.tokens[c] || 0) + 1;
+      return !!computePayment(hypo, card);
     },
     canReserve() {
       return this.isHumanTurn && this.game.phase === PHASES.ACTION && this.me.hand.length < MAX_HAND;
@@ -183,6 +198,8 @@ export function createController({ cards, seed, humanName = '나', aiNames = ['�
 
     // ---- actions (all go through the engine) ----
     dispatch(action) {
+      const actor = this.game.current;
+      const turnBefore = this.game.turn;
       const res = applyAction(this.game, action);
       if (!res.ok) {
         this.errors += 1;
@@ -190,6 +207,7 @@ export function createController({ cards, seed, humanName = '나', aiNames = ['�
         return res;
       }
       this.game = res.state;
+      if (actor === this.human && this.game.turn > turnBefore) this.humanTurns += 1;
       this.balls = [];
       this.discard = {};
       this.sheet = null;
@@ -224,13 +242,25 @@ export function createController({ cards, seed, humanName = '나', aiNames = ['�
     pass() { return this.dispatch({ type: 'pass' }); },
 
     snapshot() {
-      return { seed: this.seed, humanName: this.humanName, aiNames: this.aiNames, difficulty: this.difficulty, log: this.log, game: this.game };
+      return { seed: this.seed, humanName: this.humanName, aiNames: this.aiNames, difficulty: this.difficulty, personality: this.personality, challenge: this.challenge, log: this.log, game: this.game };
+    },
+
+    // Grants the challenge's starting tokens/tableau (puzzle setup).
+    applyChallengeSetup(ch) {
+      const me = this.me;
+      for (const [k, n] of Object.entries(ch.startTokens || {})) me.tokens[k] = (me.tokens[k] || 0) + n;
+      for (const id of ch.startTableau || []) {
+        for (const key of Object.keys(this.game.decks)) {
+          const idx = this.game.decks[key].findIndex((c) => c.id === id);
+          if (idx >= 0) { me.tableau.push(...this.game.decks[key].splice(idx, 1)); break; }
+        }
+      }
     },
 
     // One opponent action. Returns false when it is not an AI turn.
     stepAI(rnd) {
       if (this.finished || this.game.players[this.game.current].isAI !== true) return false;
-      this.dispatch(chooseAction(this.game, rnd, this.difficulty));
+      this.dispatch(chooseAction(this.game, rnd, this.difficulty, this.personality));
       return true;
     },
   };

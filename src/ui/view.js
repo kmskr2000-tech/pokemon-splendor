@@ -5,6 +5,10 @@ import { COLORS, MASTER, PHASES, TOKEN_KEYS } from '../core/constants.js';
 import { getBonuses, getPoints, tokenCount, bonusList, isSpecial } from '../core/engine.js';
 import { BALLS, TRAINERS, evoText } from './controller.js';
 import { dexSummary } from '../storage/store.js';
+import { ACHIEVEMENTS } from '../data/achievements.js';
+import { CHALLENGES, challengeProgress } from '../data/challenges.js';
+
+const diffLabel = { easy: '쉬움', normal: '보통', hard: '어려움' };
 
 const ASSET = 'assets';
 export const ballSrc = (key) => `${ASSET}/items/${BALLS[key].file}.png`;
@@ -20,13 +24,13 @@ const tierLabel = { 1: '1단계', 2: '2단계', 3: '3단계', rare: '희귀', le
 
 // ---------- cards ----------
 
-export function cardHTML(card, ctrl, { zone = 'table', buyable = false, animated = true, interactive = true } = {}) {
+export function cardHTML(card, ctrl, { zone = 'table', buyable = false, buyableNext = false, animated = true, interactive = true } = {}) {
   const bonuses = bonusList(card);
   const special = isSpecial(card);
   const cost = COLORS.filter((c) => card.cost[c])
     .map((c) => `<span class="costchip">${ballImg(c)}${card.cost[c]}</span>`).join('')
     + (special ? `<span class="costchip">${ballImg(MASTER)}1</span>` : '');
-  const classes = ['card', `b-${bonuses[0]}`, special ? card.tier : '', buyable ? 'buyable' : ''].filter(Boolean).join(' ');
+  const classes = ['card', `b-${bonuses[0]}`, special ? card.tier : '', buyable ? 'buyable' : '', buyableNext && !buyable ? 'buyable-next' : ''].filter(Boolean).join(' ');
   const tag = special ? `<span class="tag ${card.tier}">${tierLabel[card.tier]}</span><br>` : '';
   const attrs = interactive ? `data-action="card" data-card="${card.id}" data-zone="${zone}"` : 'disabled';
   return `<button class="${classes}" ${attrs}>
@@ -48,7 +52,7 @@ function tierRow(ctrl, key) {
   const canDeck = reservableDeck && ctrl.canReserve() && deckN > 0;
   const deck = `<button class="deck px" ${canDeck ? `data-action="deck" data-tier="${key}"` : 'disabled'}>
       <b>${deckN}</b>${tierLabel[key]}</button>`;
-  const cards = s.table[key].map((card) => (card ? cardHTML(card, ctrl, { buyable: ctrl.canBuy(card.id) }) : emptySlot())).join('');
+  const cards = s.table[key].map((card) => (card ? cardHTML(card, ctrl, { buyable: ctrl.canBuy(card.id), buyableNext: ctrl.canBuyAfterTake(card.id) }) : emptySlot())).join('');
   return { deck, cards };
 }
 
@@ -154,7 +158,7 @@ function handHTML(ctrl) {
   const me = ctrl.me;
   if (!me.hand.length) return '<div class="empty-note">찜한 카드 없음 (최대 3장)</div>';
   return me.hand.map((card) => `
-    <button class="rsv ${ctrl.canBuy(card.id) ? 'buyable' : ''}" data-action="card" data-card="${card.id}" data-zone="hand" ${ctrl.isHumanTurn ? '' : 'disabled'}>
+    <button class="rsv ${ctrl.canBuy(card.id) ? 'buyable' : ctrl.canBuyAfterTake(card.id) ? 'buyable-next' : ''}" data-action="card" data-card="${card.id}" data-zone="hand" ${ctrl.isHumanTurn ? '' : 'disabled'}>
       ${staticSprite(card)}${card.name} <small>${tierLabel[card.tier]}${card.points ? ` · ${card.points}점` : ''}</small></button>`).join('');
 }
 
@@ -347,6 +351,7 @@ export function sheetHTML(ctrl) {
 export function startHTML({ save = null, dex = null, cards = [], options = null } = {}) {
   const sum = dex ? dexSummary(dex, cards) : null;
   const diff = save?.difficulty ?? options?.difficulty ?? 'normal';
+  const pers = save?.personality ?? options?.personality ?? 'random';
   const resume = save
     ? `<button class="btn primary resume" data-action="resume">이어하기<small>${save.humanName} · ${save.game.turn}턴째 · ${new Date(save.savedAt).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</small></button>`
     : '';
@@ -360,10 +365,18 @@ export function startHTML({ save = null, dex = null, cards = [], options = null 
       ${[['easy', '쉬움'], ['normal', '보통'], ['hard', '어려움']].map(([v, l]) =>
         `<button class="diffbtn ${diff === v ? 'sel' : ''}" data-action="difficulty" data-v="${v}">${l}</button>`).join('')}
     </div>
+    <div class="difflabel">AI 성격</div>
+    <div class="diffrow">
+      ${[['random', '랜덤'], ['specialized', '전문화'], ['opportunistic', '견제'], ['balanced', '균형']].map(([v, l]) =>
+        `<button class="diffbtn ${pers === v ? 'sel' : ''}" data-action="personality" data-v="${v}">${l}</button>`).join('')}
+    </div>
     ${save ? '<p class="sheet-p warn">새로 시작하면 저장된 게임은 사라져요.</p>' : ''}
     <div class="btnrow"><button class="btn alt" data-action="dex">도감 ${sum ? `${sum.caught}/${sum.total}` : ''}</button>
     <button class="btn alt" data-action="rules">룰 설명</button>
     <button class="btn alt" data-action="options">⚙ 설정</button></div>
+    <div class="btnrow"><button class="btn alt" data-action="achv">🏆 업적</button>
+    <button class="btn alt" data-action="records">📊 기록</button>
+    <button class="btn alt" data-action="challenge">🎯 챌린지</button></div>
     <div class="btnrow"><button class="btn primary" data-action="tutorial">튜토리얼 (처음 하세요?)</button></div>
   </div></div>`;
 }
@@ -378,7 +391,8 @@ export function rulesHTML() {
       <p>① <b>서로 다른 볼 3개</b> 가져오기 (마스터볼 제외)<br>
       ② <b>같은 볼 2개</b> 가져오기 (공급처에 4개 이상 남았을 때만)<br>
       ③ <b>카드 찜하기</b> (최대 3장, 마스터볼 1개를 받아요 · 희귀/전설은 찜 불가)<br>
-      ④ <b>포켓몬 잡기</b> (볼을 내고 카드를 가져와요)</p>
+      ④ <b>포켓몬 잡기</b> (볼을 내고 카드를 가져와요)<br>
+      <span style="color:#4ade80">■</span> <b>초록 테두리</b>=지금 바로 잡을 수 있음 · <span style="color:#60a5fa">■</span> <b>파랑 테두리</b>=고른 볼을 가져가면 다음 턴에 잡을 수 있음</p>
       <h4>■ 보너스 = 할인</h4>
       <p>잡은 포켓몬의 보너스 1개(희귀/전설은 2개)마다 해당 볼 1개씩 영구 할인! 게임 끝까지 유지돼요.</p>
       <h4>■ 진화</h4>
@@ -478,11 +492,69 @@ export function endHTML(ctrl) {
     return `<tr class="${r.rank === 1 ? 'win' : ''} ${p.id === ctrl.human ? 'me' : ''}"><td>${r.rank}</td><td>${p.isAI ? 'AI ' : ''}${p.name}</td><td>${r.points}점</td><td>진화 ${r.evolutions}</td><td>${r.pokemon}마리</td></tr>`;
   }).join('');
   const top = s.ranking[0].player === ctrl.human;
+  const scoreLine = ctrl.lastScore != null
+    ? `<p class="scoreline">승리 점수 <b>${ctrl.lastScore}</b>${ctrl.lastBest ? ' <span class="newbest">NEW!</span>' : ''}</p>`
+    : '';
   return `<div class="overlay"><div class="panel">
     <div class="title big">${top ? '우승!' : '게임 종료'}<small>${s.stalled ? '아무도 행동할 수 없어 종료됐어요' : '최종 순위'}</small></div>
     <table class="rank">${rows}</table>
+    ${scoreLine}
     <p class="sheet-p">동점은 진화 횟수가 많은 쪽 → 앞면 포켓몬 수가 적은 쪽이 이겨요.</p>
     <div class="btnrow"><button class="btn alt" data-action="dex">도감</button>
     <button class="btn primary" data-action="restart">다시 하기</button></div>
+  </div></div>`;
+}
+
+export function achvHTML(unlocked) {
+  const rows = ACHIEVEMENTS.map((a) => {
+    const got = !!unlocked[a.id];
+    return `<div class="achvrow ${got ? 'got' : ''}"><span class="achvicon">${got ? a.icon : '🔒'}</span>
+      <div><b>${a.name}</b><br><small>${a.desc}</small></div></div>`;
+  }).join('');
+  const n = Object.keys(unlocked).length;
+  return `<div class="overlay"><div class="panel">
+    <div class="title big">업적<small>${n}/${ACHIEVEMENTS.length} 달성</small></div>
+    <div class="achvlist">${rows}</div>
+    <div class="btnrow"><button class="btn primary" data-action="achv-close">닫기</button></div>
+  </div></div>`;
+}
+
+export function recordsHTML(records) {
+  const hist = records.history.slice().reverse().map((h) =>
+    `<tr><td>${h.won ? '🏆' : '─'}</td><td>${h.score}</td><td>${h.points}점</td><td>${h.turns}턴</td><td>${diffLabel[h.difficulty] || ''}</td></tr>`).join('');
+  return `<div class="overlay"><div class="panel">
+    <div class="title big">기록<small>최고 ${records.best}점 · ${records.wins}승/${records.games}전</small></div>
+    ${hist ? `<table class="rank"><tr><th></th><th>점수</th><th>결과</th><th>턴</th><th>난이도</th></tr>${hist}</table>` : '<p class="sheet-p">아직 기록이 없어요.</p>'}
+    <div class="btnrow"><button class="btn primary" data-action="records-close">닫기</button></div>
+  </div></div>`;
+}
+
+export function challengeListHTML(completed) {
+  const rows = CHALLENGES.map((c) => {
+    const done = !!completed[c.id];
+    return `<button class="chalrow" data-action="challenge-start" data-id="${c.id}">
+      <span class="chalicon">${done ? '✅' : '🎯'}</span>
+      <div><b>${c.name}</b><br><small>${c.desc}</small></div></button>`;
+  }).join('');
+  return `<div class="overlay"><div class="panel">
+    <div class="title big">챌린지<small>${Object.keys(completed).length}/${CHALLENGES.length} 클리어</small></div>
+    <div class="achvlist">${rows}</div>
+    <div class="btnrow"><button class="btn primary" data-action="challenge-close">닫기</button></div>
+  </div></div>`;
+}
+
+export function challengeBannerHTML(ctrl) {
+  if (!ctrl?.challenge || ctrl.challengeDone || ctrl.finished) return '';
+  const p = challengeProgress(ctrl.challenge, ctrl, getPoints, bonusList);
+  const left = Math.max(0, ctrl.challenge.maxTurns - ctrl.humanTurns);
+  return `<div class="chbanner"><span>🎯 ${ctrl.challenge.name}</span><span>${p.cur}/${p.target}${p.label}</span><span>남은 턴 ${left}</span></div>`;
+}
+
+export function challengeEndHTML(won, challenge) {
+  return `<div class="overlay"><div class="panel">
+    <div class="title big">${won ? '챌린지 성공!' : '챌린지 실패'}<small>${challenge.name}</small></div>
+    <p class="sheet-p">${won ? '목표를 달성했어요! 🎉' : `목표: ${challenge.desc}`}</p>
+    <div class="btnrow"><button class="btn alt" data-action="challenge">다른 챌린지</button>
+    <button class="btn primary" data-action="restart">타이틀로</button></div>
   </div></div>`;
 }
