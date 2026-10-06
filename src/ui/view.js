@@ -271,6 +271,20 @@ function oppSheetHTML(p, ctrl) {
     <div class="btnrow"><button class="btn primary" data-action="close">닫기</button></div></div>`;
 }
 
+// have/need per color when the player can't afford a card (red = short)
+function shortfallHTML(player, card) {
+  const bonuses = getBonuses(player);
+  const parts = COLORS.map((c) => {
+    const need = Math.max(0, (card.cost[c] || 0) - bonuses[c]);
+    if (!need) return '';
+    const have = player.tokens[c] || 0;
+    return `<span class="need ${have >= need ? 'ok' : 'lack'}">${ballImg(c, 'mini2')}${have}/${need}</span>`;
+  }).join('');
+  const masterNote = isSpecial(card) && !(player.tokens[MASTER] > 0)
+    ? `<span class="need lack">${ballImg(MASTER, 'mini2')}마스터볼 필요</span>` : '';
+  return parts + masterNote || '볼이 부족해요';
+}
+
 export function sheetHTML(ctrl) {
   const sh = ctrl.sheet;
   if (!sh) return '';
@@ -288,9 +302,14 @@ export function sheetHTML(ctrl) {
   const card = ctrl.cardsById.get(sh.cardId);
   const inHand = ctrl.zone(card.id) === 'hand';
   const pay = ctrl.payment(card.id);
-  const payText = pay
-    ? TOKEN_KEYS.filter((k) => pay[k]).map((k) => `${ballImg(k)}${pay[k]}`).join(' ') || '무료!'
-    : '볼이 부족해요';
+  let payText, payCls;
+  if (pay) {
+    payCls = '';
+    payText = TOKEN_KEYS.filter((k) => pay[k]).map((k) => `${ballImg(k)}${pay[k]}`).join(' ') || '무료!';
+  } else {
+    payCls = 'no';
+    payText = shortfallHTML(ctrl.me, card);
+  }
   const canReserve = !inHand && !isSpecial(card) && ctrl.canReserve();
   const reserveNote = inHand ? '' : isSpecial(card) ? '희귀·전설은 찜 불가' : !ctrl.canReserve() ? '찜 한도(3장) 초과' : '';
   return `<div class="sheet-back" data-action="close"></div><div class="sheet">
@@ -298,7 +317,7 @@ export function sheetHTML(ctrl) {
     <div class="sheet-info">
       <div class="sheet-title">${card.name}</div>
       <div class="paylbl">내가 낼 볼 (보너스 할인 적용)</div>
-      <div class="pay ${pay ? '' : 'no'}">${payText}</div>
+      <div class="pay ${payCls}">${payText}</div>
       ${reserveNote ? `<div class="note">${reserveNote}</div>` : ''}
     </div>
     <div class="btnrow col">

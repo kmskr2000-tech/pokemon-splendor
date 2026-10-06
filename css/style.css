@@ -307,3 +307,8 @@ button.card:not(:disabled):active { transform: translate(3px, 3px); box-shadow: 
 .aitoast .what { display: flex; align-items: center; gap: 6px; }
 .aitoast .what img { width: 30px; height: 30px; image-rendering: pixelated; }
 .aitoast .what b { color: var(--gold); }
+
+.need { display: inline-flex; align-items: center; gap: 3px; margin: 2px 8px 2px 0; font-size: 13px; color: #fff; }
+.need img { width: 18px; height: 18px; }
+.need.ok { color: #4ade80; }
+.need.lack { color: #fca5a5; }
