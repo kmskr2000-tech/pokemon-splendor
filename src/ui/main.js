@@ -6,7 +6,7 @@ import * as V from './view.js';
 import { browserStorage, loadDex, loadSave, saveGame, clearSave, recordCatch, recordGame } from '../storage/store.js';
 
 const params = new URLSearchParams(location.search);
-const AI_DELAY = params.has('fast') ? 0 : 800; // ?fast=1 skips the pacing delay (tests)
+const AI_DELAY = params.has('fast') ? 0 : 1600; // ?fast=1 skips the pacing delay (tests)
 const AI_NAMES = ['지우', '이슬', '웅이', '레드'];
 
 const regions = {
