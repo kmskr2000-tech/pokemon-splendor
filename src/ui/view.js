@@ -179,7 +179,7 @@ export function actionBarHTML(ctrl) {
   const s = ctrl.state;
   if (ctrl.finished) return '<div class="hint">게임이 끝났어요.</div>';
   if (!ctrl.isHumanTurn) {
-    return `<div class="hint">${ctrl.current.name}이(가) 생각 중…</div>`;
+    return aiToastHTML(ctrl) || `<div class="hint">${ctrl.current.name}이(가) 생각 중…</div>`;
   }
   const err = ctrl.message ? `<div class="hint err">${ctrl.message}</div>` : '';
   if (s.phase === PHASES.DISCARD) {
@@ -219,6 +219,28 @@ export function actionBarHTML(ctrl) {
 export function logHTML(ctrl) {
   if (!ctrl.log.length) return '';
   return `<div class="log">${ctrl.log.slice(-4).map((l) => `<div>${l}</div>`).join('')}</div>`;
+}
+
+export function aiToastHTML(ctrl) {
+  const ev = ctrl.lastAIEvent;
+  if (!ev || ctrl.isHumanTurn || ctrl.finished) return '';
+  const p = ctrl.state.players[ev.player];
+  if (!p) return '';
+  let body = '';
+  if (ev.type === 'takeBalls') body = `${ev.colors.map((c) => ballImg(c, 'ballspr')).join('')} 가져감`;
+  else if (ev.type === 'takeTwo') body = `${ballImg(ev.color, 'ballspr')}<b>×2</b> 가져감`;
+  else if (ev.type === 'buy') {
+    const card = ctrl.cardsById.get(ev.cardId);
+    body = card ? `${staticSprite(card)}<b>${card.name}</b> 잡음!` : '포켓몬 잡음!';
+  } else if (ev.type === 'reserve') {
+    const card = ev.cardId ? ctrl.cardsById.get(ev.cardId) : null;
+    body = card ? `${staticSprite(card)}<b>${card.name}</b> 찜!` : '덱에서 찜!';
+  } else if (ev.type === 'evolve') {
+    const from = ctrl.cardsById.get(ev.from);
+    const to = ctrl.cardsById.get(ev.to);
+    body = from && to ? `${staticSprite(from)} → ${staticSprite(to)}<b>진화!</b>` : '진화!';
+  } else return '';
+  return `<div class="aitoast"><span class="who">AI ${p.name}</span><span class="what">${body}</span></div>`;
 }
 
 // ---------- sheet + overlays ----------

@@ -54,8 +54,9 @@ export function createController({ cards, seed, humanName = 'ë‚˜', aiNames = ['ì
     human: 0,
     balls: [], // selected supply colors (a repeated color means "take two")
     discard: {}, // token map selected for return
-    sheet: null, // { kind: 'card', cardId } | { kind: 'deck', tier }
+    sheet: null, // { kind: 'card', cardId } | { kind: 'deck', tier } | { kind: 'opp', playerId }
     message: '', // last engine error shown in the hint bar
+    lastAIEvent: null, // most recent AI action event (for the action toast)
     log: resume?.log ? resume.log.slice(-6) : [], // recent human-readable events, newest last
     seed,
     humanName,
@@ -192,6 +193,9 @@ export function createController({ cards, seed, humanName = 'ë‚˜', aiNames = ['ì
       for (const ev of res.events) {
         const line = describeEvent(ev, this);
         if (line) this.log.push(line);
+        if (ev.player !== this.human && ['takeBalls', 'takeTwo', 'buy', 'reserve', 'evolve'].includes(ev.type)) {
+          this.lastAIEvent = ev;
+        }
       }
       if (this.log.length > 6) this.log = this.log.slice(-6);
       for (const ev of res.events) {
