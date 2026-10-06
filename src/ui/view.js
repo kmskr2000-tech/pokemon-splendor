@@ -15,6 +15,15 @@ export const ballSrc = (key) => `${ASSET}/items/${BALLS[key].file}.png`;
 const pokeSrc = (dex) => `${ASSET}/pokemon/${dex}.png`;
 const animSrc = (dex) => `${ASSET}/anim/${dex}.gif`;
 
+// AI trainer face portraits by name.
+const TRAINER_FACE = {
+  '지우': 'trainer-jiwoo',
+  '이슬': 'trainer-iseul',
+  '웅이': 'trainer-woong',
+  '로이': 'trainer-roy',
+};
+export const trainerFaceSrc = (name) => TRAINER_FACE[name] ? `${ASSET}/trainers/${TRAINER_FACE[name]}.webp` : null;
+
 const ballImg = (key, cls = 'miniball') => `<img class="${cls}" src="${ballSrc(key)}" alt="${BALLS[key].name}">`;
 const staticSprite = (card, cls = 'tiny') => `<img class="${cls}" src="${pokeSrc(card.dex)}" alt="">`;
 const animSprite = (card) =>
@@ -98,7 +107,7 @@ export function opponentsHTML(ctrl) {
       .map((k) => `<span class="otp">${ballImg(k, 'mini2')}${p.tokens[k]}</span>`).join('');
     return `
     <button class="opp px ${s.current === p.id && !ctrl.finished ? 'active' : ''}" data-action="opp" data-id="${p.id}">
-      <div class="nm">AI ${p.name}</div>
+      <div class="nm">${trainerFaceSrc(p.name) ? `<img class="tface" src="${trainerFaceSrc(p.name)}" alt="">` : ''}AI ${p.name}</div>
       <div class="sc">${getPoints(p)}</div>
       <div class="olbl2">보너스(할인)</div>
       <div class="pips">${bonusPips(p)}</div>
@@ -266,7 +275,7 @@ function oppSheetHTML(p, ctrl) {
     ? p.hand.map((card) => `<button class="orsv" data-action="view-card" data-card="${card.id}" data-from="opp" data-pid="${p.id}">${staticSprite(card)}${card.name} <small>${tierLabel[card.tier]}${card.points ? ` · ${card.points}점` : ''}</small></button>`).join('')
     : '<div class="empty-note">없음</div>';
   return `<div class="sheet-back" data-action="close"></div><div class="sheet wide">
-    <div class="sheet-title">AI ${p.name} <small>· ${getPoints(p)}점 · 진화 ${p.evolved.length}회</small></div>
+    <div class="sheet-title">${trainerFaceSrc(p.name) ? `<img class="tface big" src="${trainerFaceSrc(p.name)}" alt="">` : ''}AI ${p.name} <small>· ${getPoints(p)}점 · 진화 ${p.evolved.length}회</small></div>
     <div class="olbl">■ 보너스 (할인)</div>
     <div class="pips big">${COLORS.map((c) => `<span class="pip d-${c}">${ballImg(c, 'mini2')}${b[c]}</span>`).join('')}</div>
     <div class="olbl">■ 가진 볼 (${tokenCount(p)}/10)</div>

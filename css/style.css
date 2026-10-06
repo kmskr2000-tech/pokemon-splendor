@@ -392,3 +392,7 @@ button.mp { cursor: pointer; }
 
 button.orsv { cursor: pointer; width: 100%; text-align: left; font: inherit; }
 button.orsv:hover { border-color: #4ade80; }
+
+.tface { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; vertical-align: middle; margin-right: 4px; border: 2px solid var(--ink); image-rendering: auto; }
+.tface.big { width: 44px; height: 44px; }
+.opp .nm { display: flex; align-items: center; }
