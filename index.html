@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex,nofollow">
+<title>포켓몬 스플렌더</title>
+<link rel="icon" href="assets/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" href="assets/items/poke-ball.png">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="phone" id="app">
+  <div id="header"></div>
+  <div class="layout">
+    <div class="col-board">
+      <div class="opponents" id="opponents"></div>
+      <div class="board" id="board"></div>
+      <div class="supply">
+        <div class="lbl">■ 볼 공급처 (탭해서 고르기)</div>
+        <div class="balls" id="supply"></div>
+      </div>
+    </div>
+    <div class="col-me">
+      <div class="me" id="me"></div>
+      <div class="log" id="log"></div>
+    </div>
+    <div class="actionbar" id="actionbar"></div>
+  </div>
+</div>
+<div id="sheet"></div>
+<div id="overlay"></div>
+<script type="module" src="src/ui/main.js"></script>
+</body>
+</html>
