@@ -23,6 +23,7 @@ const cache = {};
 let ctrl = null;
 let aiTimer = null;
 let dexOpen = false;
+let rulesOpen = false;
 const storage = browserStorage();
 
 const $ = (id) => document.getElementById(id);
@@ -37,6 +38,7 @@ function render() {
   if (ctrl) for (const [id, fn] of Object.values(regions)) setHTML(id, fn(ctrl));
   let overlay = !ctrl ? V.startHTML({ save: loadSave(storage, CARDS), dex: loadDex(storage), cards: CARDS }) : ctrl.finished ? V.endHTML(ctrl) : '';
   if (dexOpen) overlay = V.dexHTML(loadDex(storage), CARDS);
+  else if (rulesOpen) overlay = V.rulesHTML();
   setHTML('overlay', overlay);
   scheduleAI();
 }
@@ -86,6 +88,9 @@ document.addEventListener('click', (e) => {
     case 'resume': resumeGame(); return;
     case 'dex': dexOpen = true; break;
     case 'dex-close': dexOpen = false; break;
+    case 'rules': rulesOpen = true; break;
+    case 'rules-close': rulesOpen = false; break;
+    case 'opp': ctrl.openOpp(d.id); break;
     case 'restart': ctrl = null; clearTimeout(aiTimer); aiTimer = null; break;
     case 'ball': ctrl.toggleBall(d.color); break;
     case 'clear': ctrl.clearSelection(); break;

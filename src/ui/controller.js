@@ -171,6 +171,9 @@ export function createController({ cards, seed, humanName = 'ë‚˜', aiNames = ['ì
       this.message = '';
       this.sheet = { kind: 'deck', tier };
     },
+    openOpp(playerId) {
+      this.sheet = { kind: 'opp', playerId: Number(playerId) };
+    },
     closeSheet() { this.sheet = null; },
 
     // ---- actions (all go through the engine) ----

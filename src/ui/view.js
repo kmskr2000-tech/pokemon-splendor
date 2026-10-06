@@ -76,6 +76,7 @@ export function headerHTML(ctrl) {
   const last = ctrl.lastRound ? `<div class="lastround">마지막 라운드! ${s.players[s.endTriggeredBy].name}이(가) 18점 달성</div>` : '';
   return `<div class="header">
       <div class="title">포켓몬 스플렌더<small>POKEMON SPLENDOR · DOT EDITION</small></div>
+      <button class="rulesbtn" data-action="rules">룰 설명</button>
       <div class="turn ${ctrl.isHumanTurn ? 'mine' : ''}">${badge}</div>
     </div>${last}`;
 }
@@ -88,12 +89,12 @@ const bonusPips = (p) => {
 export function opponentsHTML(ctrl) {
   const s = ctrl.state;
   return s.players.filter((p) => p.id !== ctrl.human).map((p) => `
-    <div class="opp px ${s.current === p.id && !ctrl.finished ? 'active' : ''}">
+    <button class="opp px ${s.current === p.id && !ctrl.finished ? 'active' : ''}" data-action="opp" data-id="${p.id}">
       <div class="nm">AI ${p.name}</div>
       <div class="sc">${getPoints(p)}</div>
       <div class="pips">${bonusPips(p)}</div>
-      <div class="meta">볼 ${tokenCount(p)}개 · 찜 ${p.hand.length}<br>포켓몬 ${p.tableau.length}마리</div>
-    </div>`).join('');
+      <div class="meta">볼 ${tokenCount(p)}개 · 찜 ${p.hand.length}<br>포켓몬 ${p.tableau.length}마리<br><span class="more">눌러서 자세히</span></div>
+    </button>`).join('');
 }
 
 // ---------- supply ----------
@@ -215,9 +216,39 @@ export function logHTML(ctrl) {
 
 // ---------- sheet + overlays ----------
 
+function oppSheetHTML(p, ctrl) {
+  const b = getBonuses(p);
+  const tokens = TOKEN_KEYS.filter((k) => p.tokens[k] > 0)
+    .map((k) => `<span class="otk">${ballImg(k, 'mini2')}${p.tokens[k]}</span>`).join('') || '없음';
+  const groups = COLORS.map((c) => {
+    const list = p.tableau.filter((card) => bonusList(card)[0] === c);
+    if (!list.length) return '';
+    return `<div class="grp g-${c}">${list.map((card) => `
+      <span class="mp">${staticSprite(card)}<span>${card.name}${card.points ? ` <i>${card.points}점</i>` : ''}</span></span>`).join('')}</div>`;
+  }).join('');
+  const hand = p.hand.length
+    ? p.hand.map((card) => `<div class="orsv">${staticSprite(card)}${card.name} <small>${tierLabel[card.tier]}${card.points ? ` · ${card.points}점` : ''}</small></div>`).join('')
+    : '<div class="empty-note">없음</div>';
+  return `<div class="sheet-back" data-action="close"></div><div class="sheet wide">
+    <div class="sheet-title">AI ${p.name} <small>· ${getPoints(p)}점 · 진화 ${p.evolved.length}회</small></div>
+    <div class="olbl">■ 보너스 (할인)</div>
+    <div class="pips big">${COLORS.map((c) => `<span class="pip d-${c}">${ballImg(c, 'mini2')}${b[c]}</span>`).join('')}</div>
+    <div class="olbl">■ 가진 볼 (${tokenCount(p)}/10)</div>
+    <div class="otks">${tokens}</div>
+    <div class="olbl">■ 포켓몬 (${p.tableau.length}마리)</div>
+    <div class="opoke">${groups || '<div class="empty-note">아직 없음</div>'}</div>
+    <div class="olbl">■ 찜한 카드 (${p.hand.length}/3)</div>
+    <div class="ohand">${hand}</div>
+    <div class="btnrow"><button class="btn primary" data-action="close">닫기</button></div></div>`;
+}
+
 export function sheetHTML(ctrl) {
   const sh = ctrl.sheet;
   if (!sh) return '';
+  if (sh.kind === 'opp') {
+    const p = ctrl.state.players[sh.playerId];
+    return p ? oppSheetHTML(p, ctrl) : '';
+  }
   if (sh.kind === 'deck') {
     return `<div class="sheet-back" data-action="close"></div><div class="sheet">
       <div class="sheet-title">${tierLabel[sh.tier]} 덱 맨 위 카드</div>
@@ -259,7 +290,34 @@ export function startHTML({ save = null, dex = null, cards = [] } = {}) {
     ${resume}
     <div class="tiles">${TRAINERS.map((t, i) => `<button class="tile t${i}" data-action="start" data-name="${t}"><span class="tilebox"></span>${t}</button>`).join('')}</div>
     ${save ? '<p class="sheet-p warn">새로 시작하면 저장된 게임은 사라져요.</p>' : ''}
-    <div class="btnrow"><button class="btn alt" data-action="dex">도감 ${sum ? `${sum.caught}/${sum.total}` : ''}</button></div>
+    <div class="btnrow"><button class="btn alt" data-action="dex">도감 ${sum ? `${sum.caught}/${sum.total}` : ''}</button>
+    <button class="btn alt" data-action="rules">룰 설명</button></div>
+  </div></div>`;
+}
+
+export function rulesHTML() {
+  return `<div class="overlay"><div class="panel rulespanel">
+    <div class="title big">룰 설명</div>
+    <div class="rules">
+      <h4>■ 목표</h4>
+      <p><b>18점</b>을 먼저 모으면 마지막 라운드! 전원이 같은 턴 수를 마치면 종료, 최고점이 승리해요.</p>
+      <h4>■ 내 차례에 하는 일 (하나만 선택)</h4>
+      <p>① <b>서로 다른 볼 3개</b> 가져오기 (마스터볼 제외)<br>
+      ② <b>같은 볼 2개</b> 가져오기 (공급처에 4개 이상 남았을 때만)<br>
+      ③ <b>카드 찜하기</b> (최대 3장, 마스터볼 1개를 받아요 · 희귀/전설은 찜 불가)<br>
+      ④ <b>포켓몬 잡기</b> (볼을 내고 카드를 가져와요)</p>
+      <h4>■ 보너스 = 할인</h4>
+      <p>잡은 포켓몬의 보너스 1개(희귀/전설은 2개)마다 해당 볼 1개씩 영구 할인! 게임 끝까지 유지돼요.</p>
+      <h4>■ 진화</h4>
+      <p>내 턴이 끝나면, 필요한 보너스를 가진 포켓몬은 다음 단계로 <b>진화</b>할 수 있어요. 점수와 보너스가 올라가요. (1→2→3단계만 가능)</p>
+      <h4>■ 볼 10개 제한</h4>
+      <p>마스터볼 포함 10개를 넘기면, 초과분을 골라 반환해야 해요.</p>
+      <h4>■ 마스터볼</h4>
+      <p>어떤 볼이든 1개로 대체할 수 있는 만능 볼! <b>희귀/전설 포켓몬을 잡으려면 마스터볼 1개가 꼭 필요</b>해요.</p>
+      <h4>■ 동점 처리</h4>
+      <p>① 진화 횟수가 많은 쪽 → ② 그래도 동점이면 앞면 포켓몬이 적은 쪽이 이겨요.</p>
+    </div>
+    <div class="btnrow"><button class="btn primary" data-action="rules-close">닫기</button></div>
   </div></div>`;
 }
 
