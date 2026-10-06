@@ -38,13 +38,18 @@ export function encodeSignal(desc) {
 }
 
 export function decodeSignal(code) {
-  const b64 = code.replace(/-/g, '+').replace(/_/g, '/');
-  const json = decodeURIComponent(escape(atob(b64)));
-  const o = JSON.parse(json);
-  if (!o || (o.t !== 'offer' && o.t !== 'answer') || typeof o.s !== 'string') {
+  try {
+    const b64 = String(code || '').replace(/-/g, '+').replace(/_/g, '/');
+    const json = decodeURIComponent(escape(atob(b64)));
+    const o = JSON.parse(json);
+    if (!o || (o.t !== 'offer' && o.t !== 'answer') || typeof o.s !== 'string') {
+      throw new Error('bad signal code');
+    }
+    return { type: o.t, sdp: o.s };
+  } catch (e) {
+    if (e && e.message === 'bad signal code') throw e;
     throw new Error('bad signal code');
   }
-  return { type: o.t, sdp: o.s };
 }
 
 // ---------- canonical state hash (FNV-1a 32-bit) ----------

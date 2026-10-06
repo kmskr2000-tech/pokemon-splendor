@@ -15,14 +15,14 @@
   } catch { /* offline or first deploy: stay put */ }
 })();
 
-import { CARDS } from '../data/cards.js?v=1791271218';
-import { ACHIEVEMENTS, checkAchievements } from '../data/achievements.js?v=1791271218';
-import { CHALLENGES, challengeWon } from '../data/challenges.js?v=1791271218';
-import { createController } from './controller.js?v=1791271218';
-import * as V from './view.js?v=1791271218';
-import { NetSession } from '../net/session.js?v=1791271218';
-import { getBonuses, getPoints, bonusList } from '../core/engine.js?v=1791271218';
-import { browserStorage, loadDex, loadSave, saveGame, clearSave, recordCatch, recordGame, loadOptions, saveOptions, loadAchv, unlockAchv, loadRecords, recordResult, victoryScore, loadChal, completeChal } from '../storage/store.js?v=1791271218';
+import { CARDS } from '../data/cards.js?v=1791271456';
+import { ACHIEVEMENTS, checkAchievements } from '../data/achievements.js?v=1791271456';
+import { CHALLENGES, challengeWon } from '../data/challenges.js?v=1791271456';
+import { createController } from './controller.js?v=1791271456';
+import * as V from './view.js?v=1791271456';
+import { NetSession } from '../net/session.js?v=1791271456';
+import { getBonuses, getPoints, bonusList } from '../core/engine.js?v=1791271456';
+import { browserStorage, loadDex, loadSave, saveGame, clearSave, recordCatch, recordGame, loadOptions, saveOptions, loadAchv, unlockAchv, loadRecords, recordResult, victoryScore, loadChal, completeChal } from '../storage/store.js?v=1791271456';
 
 const params = new URLSearchParams(location.search);
 const AI_DELAY = params.has('fast') ? 0 : 1600; // ?fast=1 skips the pacing delay (tests)
@@ -278,6 +278,27 @@ function startChallenge(id) {
   render();
 }
 
+// ---------- multiplayer ----------
+
+function openNet() {
+  if (net) return;
+  net = new NetSession({
+    onRender: () => render(),
+    onGameStart: (c) => {
+      clearTimeout(aiTimer); aiTimer = null;
+      ctrl = c;
+      Object.keys(cache).forEach((k) => delete cache[k]);
+      window.__ctrl = ctrl; // debugging / automated tests
+      render();
+    },
+    onGameEnd: () => { net = null; ctrl = null; render(); },
+    onNotice: (msg) => { netNotice = msg; render(); },
+  });
+  render();
+}
+
+const netInputVal = (id) => document.getElementById(id)?.value ?? '';
+
 document.addEventListener('click', (e) => {
   const el = e.target.closest('[data-action]');
   if (!el || el.disabled) return;
@@ -317,8 +338,28 @@ document.addEventListener('click', (e) => {
       ctrl.sheet = from || null;
       break;
     }
-    case 'restart': ctrl = null; tutorial = null; optionsOpen = false; clearTimeout(aiTimer); aiTimer = null; break;
+    case 'restart':
+      if (net) net.end();
+      ctrl = null; tutorial = null; optionsOpen = false; clearTimeout(aiTimer); aiTimer = null; break;
     case 'tutorial': startTutorial(); return;
+    // ----- multiplayer -----
+    case 'net': openNet(); break;
+    case 'net-menu': if (net) { net.phase = 'menu'; netNotice = ''; } break;
+    case 'net-host': if (net) { net.phase = 'hostname'; netNotice = ''; } break;
+    case 'net-join': if (net) { net.phase = 'guestname'; netNotice = ''; } break;
+    case 'net-host-create': if (net) { netNotice = ''; net.hostCreate(netInputVal('netname')); return; } break;
+    case 'net-host-invite': if (net) { netNotice = ''; net.hostInvite(); return; } break;
+    case 'net-host-accept': if (net) { netNotice = ''; net.hostAcceptAnswer(netInputVal('netanswer')); return; } break;
+    case 'net-host-lobby': if (net) { net.phase = 'hostlobby'; netNotice = ''; } break;
+    case 'net-host-start': if (net) { netNotice = ''; net.hostStart(); } break;
+    case 'net-guest-next': if (net) { net.myName = net.cleanName(netInputVal('netname')); net.phase = 'guestjoin'; netNotice = ''; } break;
+    case 'net-guest-join': if (net) { netNotice = ''; net.guestJoin(net.myName, netInputVal('netoffer')); return; } break;
+    case 'net-copy': {
+      const t = document.getElementById(d.from);
+      if (t) { t.select(); try { navigator.clipboard.writeText(t.value); netNotice = '복사됐어요.'; } catch { netNotice = '복사가 안 되면 직접 드래그해서 복사해주세요.'; } }
+      break;
+    }
+    case 'net-leave': if (net) { net.end(); return; } break;
     case 'tut-next': tutAdvance(); return;
     case 'tut-done': tutorial = null; break;
     case 'tut-skip': tutorial = null; break;

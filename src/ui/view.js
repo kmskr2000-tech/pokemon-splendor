@@ -1,12 +1,12 @@
 // Pure HTML-string renderers. Each takes the controller and returns markup; main.js owns the DOM.
 // All text interpolated here comes from our own card data / constants (no user input).
 
-import { COLORS, MASTER, PHASES, TOKEN_KEYS } from '../core/constants.js?v=1791271218';
-import { getBonuses, getPoints, tokenCount, bonusList, isSpecial } from '../core/engine.js?v=1791271218';
-import { BALLS, TRAINERS, evoText } from './controller.js?v=1791271218';
-import { dexSummary } from '../storage/store.js?v=1791271218';
-import { ACHIEVEMENTS } from '../data/achievements.js?v=1791271218';
-import { CHALLENGES, challengeProgress } from '../data/challenges.js?v=1791271218';
+import { COLORS, MASTER, PHASES, TOKEN_KEYS } from '../core/constants.js?v=1791271456';
+import { getBonuses, getPoints, tokenCount, bonusList, isSpecial } from '../core/engine.js?v=1791271456';
+import { BALLS, TRAINERS, evoText } from './controller.js?v=1791271456';
+import { dexSummary } from '../storage/store.js?v=1791271456';
+import { ACHIEVEMENTS } from '../data/achievements.js?v=1791271456';
+import { CHALLENGES, challengeProgress } from '../data/challenges.js?v=1791271456';
 
 const diffLabel = { easy: '쉬움', normal: '보통', hard: '어려움' };
 
@@ -391,7 +391,7 @@ export function startHTML({ save = null, dex = null, cards = [], options = null,
     <button class="btn alt" data-action="records">📊 기록</button>
     <button class="btn alt" data-action="challenge">🎯 챌린지</button></div>
     <div class="btnrow"><button class="btn primary" data-action="tutorial">튜토리얼 (처음 하세요?)</button></div>
-    <!-- <div class="btnrow"><button class="btn primary" data-action="net">📡 대전 (2~4인 멀티플레이)</button></div> -->
+    <div class="btnrow"><button class="btn primary" data-action="net">📡 대전 (2~4인 멀티플레이)</button></div>
   </div></div>`;
 }
 

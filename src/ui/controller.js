@@ -5,8 +5,8 @@
 import {
   COLORS, MASTER, PHASES, MAX_HAND,
   createGame, applyAction, legalActions, computePayment, evolveOptions, getCurrentPlayer, tokenCount,
-} from '../core/index.js?v=1791271218';
-import { chooseAction } from '../ai/heuristic.js?v=1791271218';
+} from '../core/index.js?v=1791271456';
+import { chooseAction } from '../ai/heuristic.js?v=1791271456';
 
 export const BALLS = {
   monster: { file: 'poke-ball', name: '몬스터볼', short: '몬스터' },
@@ -62,6 +62,8 @@ export function createController({ cards, seed, humanName = '나', aiNames = ['�
     seed,
     players: mpPlayers ?? [{ name: humanName, isAI: false }, ...aiNames.map((name) => ({ name, isAI: true }))],
   });
+  // createGame only copies whitelisted fields; re-attach the remote flag for mp.
+  if (mp) game.players.forEach((p, i) => { p.remote = i !== mp.me; });
 
   const ctrl = {
     game,
