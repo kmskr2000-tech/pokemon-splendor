@@ -10,7 +10,7 @@ import { browserStorage, loadDex, loadSave, saveGame, clearSave, recordCatch, re
 
 const params = new URLSearchParams(location.search);
 const AI_DELAY = params.has('fast') ? 0 : 1600; // ?fast=1 skips the pacing delay (tests)
-const AI_NAMES = ['지우', '이슬', '웅이', '레드'];
+const AI_NAMES = ['지우', '이슬', '웅이', '로이'];
 
 const regions = {
   header: ['header', V.headerHTML],

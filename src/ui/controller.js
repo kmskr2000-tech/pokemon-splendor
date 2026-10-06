@@ -17,7 +17,7 @@ export const BALLS = {
   master: { file: 'master-ball', name: '마스터볼', short: '마스터' },
 };
 
-export const TRAINERS = ['지우', '이슬', '웅이', '레드'];
+export const TRAINERS = ['지우', '이슬', '웅이', '로이'];
 
 const ERROR_TEXT = {
   bad_ball_count: '서로 다른 볼 3개를 골라주세요 (남은 종류가 적으면 그만큼만).',
