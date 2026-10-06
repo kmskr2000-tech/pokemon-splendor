@@ -50,7 +50,7 @@ export const CHALLENGES = [
     goal: { special: 2 },
     maxTurns: 25,
     difficulty: 'normal',
-    startTokens: { monster: 2, super: 2, hyper: 2, heal: 2, quick: 2, master: 1 },
+    startTokens: { monster: 2, super: 2, hyper: 2, heal: 2, quick: 1, master: 1 },
     startTableau: [],
   },
   {
