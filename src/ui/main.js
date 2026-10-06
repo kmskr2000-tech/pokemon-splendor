@@ -1,12 +1,12 @@
 // DOM glue: renders controller state into regions, wires taps, and paces AI turns.
 
-import { CARDS } from '../data/cards.js?v=1791267915';
-import { ACHIEVEMENTS, checkAchievements } from '../data/achievements.js?v=1791267915';
-import { CHALLENGES, challengeWon } from '../data/challenges.js?v=1791267915';
-import { createController } from './controller.js?v=1791267915';
-import * as V from './view.js?v=1791267915';
-import { getBonuses, getPoints, bonusList } from '../core/engine.js?v=1791267915';
-import { browserStorage, loadDex, loadSave, saveGame, clearSave, recordCatch, recordGame, loadOptions, saveOptions, loadAchv, unlockAchv, loadRecords, recordResult, victoryScore, loadChal, completeChal } from '../storage/store.js?v=1791267915';
+import { CARDS } from '../data/cards.js?v=1791268011';
+import { ACHIEVEMENTS, checkAchievements } from '../data/achievements.js?v=1791268011';
+import { CHALLENGES, challengeWon } from '../data/challenges.js?v=1791268011';
+import { createController } from './controller.js?v=1791268011';
+import * as V from './view.js?v=1791268011';
+import { getBonuses, getPoints, bonusList } from '../core/engine.js?v=1791268011';
+import { browserStorage, loadDex, loadSave, saveGame, clearSave, recordCatch, recordGame, loadOptions, saveOptions, loadAchv, unlockAchv, loadRecords, recordResult, victoryScore, loadChal, completeChal } from '../storage/store.js?v=1791268011';
 
 const params = new URLSearchParams(location.search);
 const AI_DELAY = params.has('fast') ? 0 : 1600; // ?fast=1 skips the pacing delay (tests)
