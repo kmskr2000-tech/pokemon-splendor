@@ -142,10 +142,10 @@ function tableauHTML(ctrl) {
     const list = me.tableau.filter((card) => bonusList(card)[0] === c);
     if (!list.length) return '';
     return `<div class="grp g-${c}">${list.map((card) => `
-      <span class="mp ${evolvable.has(card.id) ? 'evolvable' : ''}">${staticSprite(card)}
+      <button class="mp ${evolvable.has(card.id) ? 'evolvable' : ''}" data-action="view-card" data-card="${card.id}">${staticSprite(card)}
         <span>${card.name}${card.points ? ` <i>${card.points}점</i>` : ''}</span>
         ${bonusList(card).map((b) => ballImg(b, 'mini2')).join('')}
-        ${evolvable.has(card.id) ? '<span class="ev">진화 가능!</span>' : ''}</span>`).join('')}</div>`;
+        ${evolvable.has(card.id) ? '<span class="ev">진화 가능!</span>' : ''}</button>`).join('')}</div>`;
   });
   return groups.join('');
 }
@@ -292,6 +292,20 @@ export function sheetHTML(ctrl) {
   if (sh.kind === 'opp') {
     const p = ctrl.state.players[sh.playerId];
     return p ? oppSheetHTML(p, ctrl) : '';
+  }
+  if (sh.kind === 'view') {
+    const card = ctrl.cardsById.get(sh.cardId);
+    if (!card) return '';
+    return `<div class="sheet-back" data-action="close"></div><div class="sheet">
+      <div class="sheet-card">${cardHTML(card, ctrl, { interactive: false })}</div>
+      <div class="sheet-info">
+        <div class="sheet-title">${card.name}</div>
+        <div class="paylbl">보너스</div>
+        <div class="pay">${bonusList(card).map((b) => ballImg(b)).join(' ')}</div>
+        <div class="paylbl">진화 정보</div>
+        <div class="evoinfo">${evoText(card, ctrl.cardsById)}</div>
+      </div>
+      <div class="btnrow"><button class="btn primary" data-action="close">닫기</button></div></div>`;
   }
   if (sh.kind === 'deck') {
     return `<div class="sheet-back" data-action="close"></div><div class="sheet">

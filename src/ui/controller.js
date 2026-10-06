@@ -175,6 +175,9 @@ export function createController({ cards, seed, humanName = 'ë‚˜', aiNames = ['ì
     openOpp(playerId) {
       this.sheet = { kind: 'opp', playerId: Number(playerId) };
     },
+    viewCard(cardId) {
+      if (this.cardsById.has(cardId)) this.sheet = { kind: 'view', cardId };
+    },
     closeSheet() { this.sheet = null; },
 
     // ---- actions (all go through the engine) ----
