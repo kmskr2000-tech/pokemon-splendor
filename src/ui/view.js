@@ -1,12 +1,12 @@
 // Pure HTML-string renderers. Each takes the controller and returns markup; main.js owns the DOM.
 // All text interpolated here comes from our own card data / constants (no user input).
 
-import { COLORS, MASTER, PHASES, TOKEN_KEYS } from '../core/constants.js?v=1791271456';
-import { getBonuses, getPoints, tokenCount, bonusList, isSpecial } from '../core/engine.js?v=1791271456';
-import { BALLS, TRAINERS, evoText } from './controller.js?v=1791271456';
-import { dexSummary } from '../storage/store.js?v=1791271456';
-import { ACHIEVEMENTS } from '../data/achievements.js?v=1791271456';
-import { CHALLENGES, challengeProgress } from '../data/challenges.js?v=1791271456';
+import { COLORS, MASTER, PHASES, TOKEN_KEYS } from '../core/constants.js?v=1791271831';
+import { getBonuses, getPoints, tokenCount, bonusList, isSpecial } from '../core/engine.js?v=1791271831';
+import { BALLS, TRAINERS, evoText } from './controller.js?v=1791271831';
+import { dexSummary } from '../storage/store.js?v=1791271831';
+import { ACHIEVEMENTS } from '../data/achievements.js?v=1791271831';
+import { CHALLENGES, challengeProgress } from '../data/challenges.js?v=1791271831';
 
 const diffLabel = { easy: '쉬움', normal: '보통', hard: '어려움' };
 
@@ -580,12 +580,17 @@ export function netHTML(net, notice = '') {
     `<div class="roster-row">${i === 0 ? '👑' : '🎮'} ${esc(name)}${i === net.myIndex ? ' (나)' : ''}</div>`).join('');
   let body = '';
   switch (net.phase) {
-    case 'menu':
-      body = `<p class="sheet-p">같은 와이파이에 있는 친구와 대전해요.<br>서버 없이 폰끼리 직접 연결돼요. (2~4인)</p>
+    case 'menu': {
+      const modeBtn = net.usePeer
+        ? '<button class="btn ghost" data-action="net-manual">수동 연결 (서버 없이)</button>'
+        : '<button class="btn ghost" data-action="net-peer">간편 연결로 돌아가기</button>';
+      body = `<p class="sheet-p">같은 와이파이에 있는 친구와 대전해요.<br>${net.usePeer ? '방 코드 6자리만 입력하면 바로 연결돼요.' : '서버 없이 폰끼리 직접 연결돼요.'} (2~4인)</p>
         <div class="btnrow"><button class="btn primary" data-action="net-host">방 만들기</button>
         <button class="btn primary" data-action="net-join">참가하기</button></div>
-        <div class="btnrow"><button class="btn ghost" data-action="net-leave">닫기</button></div>`;
+        <div class="btnrow">${modeBtn}
+        <button class="btn ghost" data-action="net-leave">닫기</button></div>`;
       break;
+    }
     case 'hostname':
       body = `<p class="sheet-p">대전에서 쓸 이름을 입력하세요.</p>
         <input id="netname" class="netinput" maxlength="12" placeholder="이름" value="${esc(net.myName)}">
@@ -606,14 +611,19 @@ export function netHTML(net, notice = '') {
         ${net.names.length > 1 ? '<button class="btn alt" data-action="net-host-lobby">로비로</button>' : ''}
         <button class="btn ghost" data-action="net-leave">나가기</button></div>`;
       break;
-    case 'hostlobby':
-      body = `<div class="roster">${roster}</div>
+    case 'hostlobby': {
+      const codeHtml = net.usePeer && net.shortCode
+        ? `<div class="shortcode"><span>방 코드</span><b>${esc(net.shortCode)}</b></div>
+           <p class="sheet-p">친구에게 이 6자리 코드를 알려주세요.</p>`
+        : '';
+      body = `${codeHtml}<div class="roster">${roster}</div>
         <p class="sheet-p">${net.names.length}명 모였어요. (최대 4명)</p>
         <div class="btnrow">
-        ${net.names.length < 4 ? '<button class="btn alt" data-action="net-host-invite">➕ 게스트 초대</button>' : ''}
+        ${!net.usePeer && net.names.length < 4 ? '<button class="btn alt" data-action="net-host-invite">➕ 게스트 초대</button>' : ''}
         <button class="btn primary" data-action="net-host-start" ${net.names.length < 2 ? 'disabled' : ''}>게임 시작</button>
         <button class="btn ghost" data-action="net-leave">나가기</button></div>`;
       break;
+    }
     case 'guestname':
       body = `<p class="sheet-p">대전에서 쓸 이름을 입력하세요.</p>
         <input id="netname" class="netinput" maxlength="12" placeholder="이름" value="${esc(net.myName)}">
@@ -621,7 +631,12 @@ export function netHTML(net, notice = '') {
         <button class="btn ghost" data-action="net-menu">뒤로</button></div>`;
       break;
     case 'guestjoin':
-      body = `<p class="sheet-p">방장이 준 코드를 붙여넣으세요.</p>
+      body = net.usePeer
+        ? `<p class="sheet-p">방장이 알려준 6자리 코드를 입력하세요.</p>
+        <input id="netoffer" class="netinput code" maxlength="6" placeholder="예: KQ7X2P" autocomplete="off" autocapitalize="characters">
+        <div class="btnrow"><button class="btn primary" data-action="net-guest-join">참가하기</button>
+        <button class="btn ghost" data-action="net-menu">뒤로</button></div>`
+        : `<p class="sheet-p">방장이 준 코드를 붙여넣으세요.</p>
         <textarea class="netcode" id="netoffer" placeholder="방장의 코드 붙여넣기"></textarea>
         <div class="btnrow"><button class="btn primary" data-action="net-guest-join">참가하기</button>
         <button class="btn ghost" data-action="net-menu">뒤로</button></div>`;

@@ -1,17 +1,20 @@
 // Multiplayer session: owns the NetRoom, the lockstep protocol flow, and the
 // multiplayer controller. main.js only renders `session` state and forwards taps.
 
-import { CARDS } from '../data/cards.js?v=1791271456';
-import { createController } from '../ui/controller.js?v=1791271456';
-import { NetRoom } from './webrtc.js?v=1791271456';
-import { MSG, makeMsg, stateHash } from './protocol.js?v=1791271456';
+import { CARDS } from '../data/cards.js?v=1791271831';
+import { createController } from '../ui/controller.js?v=1791271831';
+import { NetRoom } from './webrtc.js?v=1791271831';
+import { PeerRoom } from './peerroom.js?v=1791271831';
+import { MSG, makeMsg, stateHash } from './protocol.js?v=1791271831';
 
 const MAX_PLAYERS = 4;
 
 export class NetSession {
   // cb: { onRender(), onGameStart(ctrl), onGameEnd(), onNotice(msg) }
-  constructor(cb) {
+  // opts.usePeer: true = short-code via PeerJS (default), false = manual offer/answer.
+  constructor(cb, opts = {}) {
     this.cb = cb;
+    this.usePeer = opts.usePeer !== false;
     this.reset();
   }
 
@@ -24,6 +27,7 @@ export class NetSession {
     this.names = [];
     this.offerCode = '';
     this.answerCode = '';
+    this.shortCode = ''; // peer mode: 6-char room code
     this.pendingPeer = -1;
     this.peerToPlayer = {}; // host: peerIdx -> playerIndex
     this.ctrl = null;
@@ -33,6 +37,22 @@ export class NetSession {
     return String(n || '').trim().slice(0, 12) || '트레이너';
   }
 
+  makeRoom() {
+    const handlers = {
+      onmessage: (i, m) => this.onMsg(i, m),
+      onjoin: () => {
+        // Guest: connection open -> introduce ourselves; host replies with welcome+roster.
+        if (this.role === 'guest' && this.room) {
+          this.room.send(makeMsg(MSG.HELLO, { name: this.myName }));
+          this.phase = 'guestlobby';
+          this.cb.onRender();
+        }
+      },
+      onleave: (i) => this.onLeave(i),
+    };
+    return this.usePeer ? new PeerRoom(handlers) : new NetRoom(handlers);
+  }
+
   // ---------- host ----------
 
   async hostCreate(name) {
@@ -40,18 +60,21 @@ export class NetSession {
     this.myName = this.cleanName(name);
     this.names = [this.myName];
     this.myIndex = 0;
-    this.room = new NetRoom({
-      onmessage: (i, m) => this.onMsg(i, m),
-      onjoin: () => {},
-      onleave: (i) => this.onLeave(i),
-    });
+    this.room = this.makeRoom();
+    // Guest connections arrive via onMsg(hello) in both transports.
+    if (this.usePeer) this.room.onjoin = () => {};
     this.phase = 'busy';
     this.cb.onRender();
     try {
-      const { peerIdx, code } = await this.room.createOffer();
-      this.pendingPeer = peerIdx;
-      this.offerCode = code;
-      this.phase = 'hostoffer';
+      if (this.usePeer) {
+        this.shortCode = await this.room.hostCreate();
+        this.phase = 'hostlobby';
+      } else {
+        const { peerIdx, code } = await this.room.createOffer();
+        this.pendingPeer = peerIdx;
+        this.offerCode = code;
+        this.phase = 'hostoffer';
+      }
     } catch {
       this.phase = 'hostname';
       this.cb.onNotice('방 생성에 실패했어요. 다시 시도해주세요.');
@@ -60,6 +83,7 @@ export class NetSession {
   }
 
   async hostInvite() {
+    if (this.usePeer) return; // peer mode: same short code, nothing to do
     this.phase = 'busy';
     this.cb.onRender();
     try {
@@ -145,27 +169,25 @@ export class NetSession {
 
   // ---------- guest ----------
 
-  async guestJoin(name, offerCode) {
+  async guestJoin(name, code) {
     this.role = 'guest';
     this.myName = this.cleanName(name);
-    this.room = new NetRoom({
-      onmessage: (i, m) => this.onMsg(i, m),
-      onjoin: () => {
-        // Connection open: introduce ourselves; host replies with welcome+roster.
-        this.room.send(makeMsg(MSG.HELLO, { name: this.myName }));
-        this.phase = 'guestlobby';
-        this.cb.onRender();
-      },
-      onleave: () => this.onLeave(-1),
-    });
+    this.room = this.makeRoom();
     this.phase = 'busy';
     this.cb.onRender();
     try {
-      this.answerCode = await this.room.join(String(offerCode || '').trim());
-      this.phase = 'guestanswer';
+      if (this.usePeer) {
+        await this.room.guestJoin(code);
+        // onjoin -> hello -> welcome/roster -> guestlobby
+      } else {
+        this.answerCode = await this.room.join(String(code || '').trim());
+        this.phase = 'guestanswer';
+      }
     } catch {
       this.phase = 'guestjoin';
-      this.cb.onNotice('코드가 올바르지 않아요. 방장에게 다시 받아주세요.');
+      this.cb.onNotice(this.usePeer
+        ? '코드가 올바르지 않거나 방장이 오프라인이에요. 다시 확인해주세요.'
+        : '코드가 올바르지 않아요. 방장에게 다시 받아주세요.');
     }
     this.cb.onRender();
   }

@@ -15,14 +15,14 @@
   } catch { /* offline or first deploy: stay put */ }
 })();
 
-import { CARDS } from '../data/cards.js?v=1791271456';
-import { ACHIEVEMENTS, checkAchievements } from '../data/achievements.js?v=1791271456';
-import { CHALLENGES, challengeWon } from '../data/challenges.js?v=1791271456';
-import { createController } from './controller.js?v=1791271456';
-import * as V from './view.js?v=1791271456';
-import { NetSession } from '../net/session.js?v=1791271456';
-import { getBonuses, getPoints, bonusList } from '../core/engine.js?v=1791271456';
-import { browserStorage, loadDex, loadSave, saveGame, clearSave, recordCatch, recordGame, loadOptions, saveOptions, loadAchv, unlockAchv, loadRecords, recordResult, victoryScore, loadChal, completeChal } from '../storage/store.js?v=1791271456';
+import { CARDS } from '../data/cards.js?v=1791271831';
+import { ACHIEVEMENTS, checkAchievements } from '../data/achievements.js?v=1791271831';
+import { CHALLENGES, challengeWon } from '../data/challenges.js?v=1791271831';
+import { createController } from './controller.js?v=1791271831';
+import * as V from './view.js?v=1791271831';
+import { NetSession } from '../net/session.js?v=1791271831';
+import { getBonuses, getPoints, bonusList } from '../core/engine.js?v=1791271831';
+import { browserStorage, loadDex, loadSave, saveGame, clearSave, recordCatch, recordGame, loadOptions, saveOptions, loadAchv, unlockAchv, loadRecords, recordResult, victoryScore, loadChal, completeChal } from '../storage/store.js?v=1791271831';
 
 const params = new URLSearchParams(location.search);
 const AI_DELAY = params.has('fast') ? 0 : 1600; // ?fast=1 skips the pacing delay (tests)
@@ -345,8 +345,10 @@ document.addEventListener('click', (e) => {
     // ----- multiplayer -----
     case 'net': openNet(); break;
     case 'net-menu': if (net) { net.phase = 'menu'; netNotice = ''; } break;
-    case 'net-host': if (net) { net.phase = 'hostname'; netNotice = ''; } break;
-    case 'net-join': if (net) { net.phase = 'guestname'; netNotice = ''; } break;
+    case 'net-host': if (net) { net.usePeer = true; net.phase = 'hostname'; netNotice = ''; } break;
+    case 'net-join': if (net) { net.usePeer = true; net.phase = 'guestname'; netNotice = ''; } break;
+    case 'net-manual': if (net) { net.usePeer = false; net.phase = 'menu'; netNotice = '수동 연결 모드: 코드를 두 번 주고받아야 해요.'; } break;
+    case 'net-peer': if (net) { net.usePeer = true; net.phase = 'menu'; netNotice = ''; } break;
     case 'net-host-create': if (net) { netNotice = ''; net.hostCreate(netInputVal('netname')); return; } break;
     case 'net-host-invite': if (net) { netNotice = ''; net.hostInvite(); return; } break;
     case 'net-host-accept': if (net) { netNotice = ''; net.hostAcceptAnswer(netInputVal('netanswer')); return; } break;

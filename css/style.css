@@ -422,3 +422,14 @@ button.orsv:hover { border-color: #4ade80; }
   border: 2px solid #fbbf24; border-radius: 6px; padding: 2px 8px; margin-left: 8px;
   display: inline-block;
 }
+
+.shortcode {
+  text-align: center; background: #1a1a2e; border: 3px solid #fbbf24; border-radius: 12px;
+  padding: 12px; margin: 8px 0; color: #fef3c7;
+}
+.shortcode span { display: block; font-size: 12px; color: #a8a8c0; margin-bottom: 4px; }
+.shortcode b { font-size: 36px; letter-spacing: 8px; font-family: monospace; }
+.netinput.code {
+  text-align: center; font-size: 28px; letter-spacing: 6px; font-family: monospace;
+  text-transform: uppercase;
+}
