@@ -41,7 +41,7 @@ function setHTML(id, html) {
 
 function render() {
   if (ctrl) for (const [id, fn] of Object.values(regions)) setHTML(id, fn(ctrl));
-  let overlay = !ctrl ? V.startHTML({ save: loadSave(storage, CARDS), dex: loadDex(storage), cards: CARDS }) : ctrl.finished ? V.endHTML(ctrl) : '';
+  let overlay = !ctrl ? V.startHTML({ save: loadSave(storage, CARDS), dex: loadDex(storage), cards: CARDS, options }) : ctrl.finished ? V.endHTML(ctrl) : '';
   if (dexOpen) overlay = V.dexHTML(loadDex(storage), CARDS);
   else if (rulesOpen) overlay = V.rulesHTML();
   else if (optionsOpen) overlay = V.optionsHTML(options);
@@ -134,7 +134,7 @@ const hooks = {
 function resumeGame() {
   const save = loadSave(storage, CARDS);
   if (!save) return;
-  ctrl = createController({ cards: CARDS, seed: save.seed, humanName: save.humanName, aiNames: save.aiNames, resume: { game: save.game, log: save.log }, hooks });
+  ctrl = createController({ cards: CARDS, seed: save.seed, humanName: save.humanName, aiNames: save.aiNames, resume: { game: save.game, log: save.log, difficulty: save.difficulty }, hooks });
   Object.keys(cache).forEach((k) => delete cache[k]);
   window.__ctrl = ctrl;
   render();
@@ -158,7 +158,7 @@ function startGame(humanName) {
   const seed = seedParam !== null ? Number(seedParam) : (crypto.getRandomValues(new Uint32Array(1))[0] || 1);
   const aiNames = AI_NAMES.filter((n) => n !== humanName).slice(0, 3);
   clearSave(storage); // a new game replaces any saved one
-  ctrl = createController({ cards: CARDS, seed, humanName, aiNames, hooks });
+  ctrl = createController({ cards: CARDS, seed, humanName, aiNames, hooks, difficulty: options.difficulty });
   saveGame(storage, ctrl.snapshot());
   Object.keys(cache).forEach((k) => delete cache[k]);
   window.__ctrl = ctrl; // debugging / automated tests
@@ -181,6 +181,12 @@ document.addEventListener('click', (e) => {
     case 'toggle-help':
       options.beginnerHelp = !options.beginnerHelp;
       saveOptions(storage, options);
+      break;
+    case 'difficulty':
+      if (['easy', 'normal', 'hard'].includes(d.v)) {
+        options.difficulty = d.v;
+        saveOptions(storage, options);
+      }
       break;
     case 'opp': ctrl.openOpp(d.id); break;
     case 'view-card': ctrl.viewCard(d.card); break;

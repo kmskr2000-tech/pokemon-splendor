@@ -101,14 +101,16 @@ export function loadSave(storage, cards) {
 // ---------- Options ----------
 // { v:1, beginnerHelp: bool }
 
-const defaultOptions = () => ({ v: 1, beginnerHelp: true });
+const defaultOptions = () => ({ v: 1, beginnerHelp: true, difficulty: 'normal' });
+
+const DIFFS = new Set(['easy', 'normal', 'hard']);
 
 export function loadOptions(storage) {
   const o = readJSON(storage, OPTS_KEY);
   if (!isObj(o)) return defaultOptions();
-  return { v: 1, beginnerHelp: o.beginnerHelp !== false };
+  return { v: 1, beginnerHelp: o.beginnerHelp !== false, difficulty: DIFFS.has(o.difficulty) ? o.difficulty : 'normal' };
 }
 
 export function saveOptions(storage, opts) {
-  writeJSON(storage, OPTS_KEY, { v: 1, beginnerHelp: !!opts.beginnerHelp });
+  writeJSON(storage, OPTS_KEY, { v: 1, beginnerHelp: !!opts.beginnerHelp, difficulty: DIFFS.has(opts.difficulty) ? opts.difficulty : 'normal' });
 }

@@ -8,7 +8,43 @@ import {
   legalActions, getCurrentPlayer, getBonuses, bonusList, isSpecial, evolveOptions, tokenCount,
 } from '../core/engine.js';
 
-const JITTER = 0.01; // breaks exact ties so the three AIs do not play identically
+const BASE_JITTER = 0.01; // breaks exact ties so the three AIs do not play identically
+
+// Opponent color needs (for hard difficulty denial): what each rival's current
+// target still lacks, capped at 2 per color.
+function opponentWant(state, selfIdx) {
+  const want = Object.fromEntries(COLORS.map((c) => [c, 0]));
+  state.players.forEach((p, i) => {
+    if (i === selfIdx) return;
+    const bonuses = getBonuses(p);
+    const target = pickTarget(state, p, bonuses, () => 0.5, 0);
+    if (!target) return;
+    const d = deficits(p, target, bonuses);
+    for (const c of COLORS) want[c] += Math.min(2, d[c]);
+  });
+  return want;
+}
+
+// Can `p` afford `card` right now (master balls cover any shortfall)?
+function canAfford(p, card) {
+  const b = getBonuses(p);
+  let short = 0;
+  for (const c of COLORS) short += Math.max(0, (card.cost[c] || 0) - b[c] - p.tokens[c]);
+  if (isSpecial(card)) return short <= p.tokens[MASTER] - 1 && p.tokens[MASTER] >= 1;
+  return short <= p.tokens[MASTER];
+}
+
+// A table card worth >=2 points that a rival could buy on their next turn.
+function threatenedCard(state) {
+  for (const card of tableCards(state)) {
+    if (card.points < 2) continue;
+    for (let i = 0; i < state.players.length; i++) {
+      if (i === state.current) continue;
+      if (canAfford(state.players[i], card)) return card;
+    }
+  }
+  return null;
+}
 
 const tableCards = (state) => TIER_KEYS.flatMap((k) => state.table[k].filter(Boolean));
 const cardById = (state, player, id) => [...player.hand, ...player.tableau, ...tableCards(state)].find((c) => c.id === id);
@@ -52,16 +88,16 @@ function cardValue(state, player, card, demand) {
 }
 
 // Design 3.1-2: (points + bonus x 2) / remaining cost, over table + hand.
-function pickTarget(state, player, bonuses, rnd) {
+function pickTarget(state, player, bonuses, rnd, jit) {
   let best = null;
   for (const card of [...player.hand, ...tableCards(state)]) {
-    const score = (card.points + bonusList(card).length * 2) / remainingCost(player, card, bonuses) + rnd() * JITTER;
+    const score = (card.points + bonusList(card).length * 2) / remainingCost(player, card, bonuses) + rnd() * jit;
     if (!best || score > best.score) best = { card, score };
   }
   return best?.card ?? null;
 }
 
-function chooseBuy(state, player, legal, rnd) {
+function chooseBuy(state, player, legal, rnd, jit) {
   const buys = legal.filter((a) => a.type === 'buy');
   if (!buys.length) return null;
   const bonuses = getBonuses(player);
@@ -70,18 +106,19 @@ function chooseBuy(state, player, legal, rnd) {
   for (const action of buys) {
     const card = cardById(state, player, action.cardId);
     const spent = TOKEN_KEYS.reduce((a, k) => a + (action.payment[k] || 0), 0);
-    const score = cardValue(state, player, card, demand) - spent * 0.1 - action.payment[MASTER] * 0.3 + rnd() * JITTER;
+    const score = cardValue(state, player, card, demand) - spent * 0.1 - action.payment[MASTER] * 0.3 + rnd() * jit;
     if (!best || score > best.score) best = { action, score };
   }
   return best.action;
 }
 
-function chooseTake(state, player, legal, target, bonuses, rnd) {
+function chooseTake(state, player, legal, target, bonuses, rnd, jit, difficulty) {
   const takes = legal.filter((a) => a.type === 'takeBalls' || a.type === 'takeTwo');
   if (!takes.length) return null;
   const want = target ? deficits(player, target, bonuses) : Object.fromEntries(COLORS.map((c) => [c, 0]));
   const demand = demandByColor(state, player, bonuses);
   const held = tokenCount(player);
+  const opp = difficulty === 'hard' ? opponentWant(state, state.current) : null;
   let best = null;
   for (const action of takes) {
     const got = action.type === 'takeTwo' ? { [action.color]: 2 } : Object.fromEntries(action.colors.map((c) => [c, 1]));
@@ -89,41 +126,52 @@ function chooseTake(state, player, legal, target, bonuses, rnd) {
     let count = 0;
     for (const [c, n] of Object.entries(got)) {
       score += Math.min(n, want[c]) * 10 + demand[c] * 0.1; // target first, other cards as tie-break
+      if (opp) score += Math.min(n, opp[c]) * 0.8; // hard: deny rivals the balls they need
       count += n;
     }
     if (action.type === 'takeTwo' && want[action.color] < 2) score -= 3; // two of a color nobody needs
     score -= Math.max(0, held + count - MAX_TOKENS) * 2; // would force a discard
-    score += rnd() * JITTER;
+    score += rnd() * jit;
     if (!best || score > best.score) best = { action, score };
   }
   return best.action;
 }
 
 // Design 3.1-3: reserve only when a master ball is what the (rare / legend) target lacks.
-function chooseReserve(state, player, legal, target, bonuses, rnd) {
+// Hard also denies a rival's imminent buy of a valuable table card.
+function chooseReserve(state, player, legal, target, bonuses, rnd, jit, difficulty) {
   const reserves = legal.filter((a) => a.type === 'reserve');
   if (!reserves.length || player.hand.length >= MAX_HAND || state.supply[MASTER] < 1) return null;
+  if (difficulty === 'hard') {
+    const threat = threatenedCard(state);
+    if (threat) {
+      const denial = reserves.find((a) => a.source === 'table' && a.cardId === threat.id);
+      if (denial) return denial;
+    }
+  }
   if (!target || !isSpecial(target)) return null;
   const missingMasters = Math.max(0, Object.values(deficits(player, target, bonuses)).reduce((a, b) => a + b, 0) + 1 - player.tokens[MASTER]);
   if (missingMasters < 1) return null;
-  return bestReserve(state, player, reserves, bonuses, rnd);
+  return bestReserve(state, player, reserves, bonuses, rnd, jit);
 }
 
 // Prefers the table card with the best target score; blind deck draws only when no table card exists.
-function bestReserve(state, player, reserves, bonuses, rnd) {
+function bestReserve(state, player, reserves, bonuses, rnd, jit) {
   let best = null;
   for (const action of reserves) {
     const card = action.source === 'table' ? cardById(state, player, action.cardId) : null;
     const score = card
-      ? (card.points + bonusList(card).length * 2) / remainingCost(player, card, bonuses) + 1 + rnd() * JITTER
-      : rnd() * JITTER;
+      ? (card.points + bonusList(card).length * 2) / remainingCost(player, card, bonuses) + 1 + rnd() * jit
+      : rnd() * jit;
     if (!best || score > best.score) best = { action, score };
   }
   return best.action;
 }
 
 // Design 3.1-4: the evolution with the biggest point gain; skip when nothing gains.
-function chooseEvolve(state, player, legal) {
+// Easy sometimes skips even a good evolve (beginner mistake).
+function chooseEvolve(state, player, legal, difficulty, rnd) {
+  if (difficulty === 'easy' && rnd() < 0.3) return { type: 'skipEvolve' };
   let best = null;
   for (const option of evolveOptions(state, player)) {
     const old = player.tableau.find((c) => c.id === option.cardId);
@@ -135,9 +183,9 @@ function chooseEvolve(state, player, legal) {
 }
 
 // Design 3.1-5: return colors the target does not need first; master balls last.
-function chooseDiscard(state, player, count, rnd) {
+function chooseDiscard(state, player, count, rnd, jit) {
   const bonuses = getBonuses(player);
-  const target = pickTarget(state, player, bonuses, rnd);
+  const target = pickTarget(state, player, bonuses, rnd, jit);
   const need = Object.fromEntries(COLORS.map((c) => [c, target ? Math.max(0, (target.cost[c] || 0) - bonuses[c]) : 0]));
   const demand = demandByColor(state, player, bonuses);
   const left = { ...player.tokens };
@@ -146,7 +194,7 @@ function chooseDiscard(state, player, count, rnd) {
     let worst = null;
     for (const k of TOKEN_KEYS) {
       if (left[k] < 1) continue;
-      const keep = k === MASTER ? 1000 : (left[k] <= need[k] ? 100 : 0) + demand[k] * 0.1 - left[k] * 0.5 + rnd() * JITTER;
+      const keep = k === MASTER ? 1000 : (left[k] <= need[k] ? 100 : 0) + demand[k] * 0.1 - left[k] * 0.5 + rnd() * jit;
       if (!worst || keep < worst.keep) worst = { k, keep };
     }
     left[worst.k] -= 1;
@@ -155,25 +203,26 @@ function chooseDiscard(state, player, count, rnd) {
   return out;
 }
 
-export function chooseAction(state, rnd = Math.random) {
+export function chooseAction(state, rnd = Math.random, difficulty = 'normal') {
+  const jit = difficulty === 'easy' ? 2.0 : difficulty === 'hard' ? 0 : BASE_JITTER;
   const player = getCurrentPlayer(state);
   const legal = legalActions(state);
 
-  if (state.phase === PHASES.DISCARD) return { type: 'discard', tokens: chooseDiscard(state, player, legal[0].count, rnd) };
-  if (state.phase === PHASES.EVOLVE) return chooseEvolve(state, player, legal);
+  if (state.phase === PHASES.DISCARD) return { type: 'discard', tokens: chooseDiscard(state, player, legal[0].count, rnd, jit) };
+  if (state.phase === PHASES.EVOLVE) return chooseEvolve(state, player, legal, difficulty, rnd);
 
-  const buy = chooseBuy(state, player, legal, rnd);
+  const buy = chooseBuy(state, player, legal, rnd, jit);
   if (buy) return buy;
 
   const bonuses = getBonuses(player);
-  const target = pickTarget(state, player, bonuses, rnd);
-  const reserve = chooseReserve(state, player, legal, target, bonuses, rnd);
+  const target = pickTarget(state, player, bonuses, rnd, jit);
+  const reserve = chooseReserve(state, player, legal, target, bonuses, rnd, jit, difficulty);
   if (reserve) return reserve;
 
-  const take = chooseTake(state, player, legal, target, bonuses, rnd);
+  const take = chooseTake(state, player, legal, target, bonuses, rnd, jit, difficulty);
   if (take) return take;
 
   // Supply has no colors left: reserving is the only productive move, otherwise pass.
   const reserves = legal.filter((a) => a.type === 'reserve');
-  return reserves.length ? bestReserve(state, player, reserves, bonuses, rnd) : legal[0];
+  return reserves.length ? bestReserve(state, player, reserves, bonuses, rnd, jit) : legal[0];
 }

@@ -350,3 +350,11 @@ button.mp { cursor: pointer; }
 
 .tkcount { font-size: 11px; color: #b8b8d0; }
 .tkcount.full { color: #fca5a5; font-weight: bold; }
+
+.difflabel { font-size: 11px; color: #b8b8d0; margin: 10px 0 6px; }
+.diffrow { display: flex; gap: 8px; justify-content: center; margin-bottom: 4px; }
+.diffbtn {
+  flex: 1; padding: 8px 0; font-size: 13px;
+  background: #3a3a55; color: #a8a8c0; border: 3px solid var(--ink);
+}
+.diffbtn.sel { background: #7c3aed; color: #fff; box-shadow: 0 0 0 2px #a78bfa; }

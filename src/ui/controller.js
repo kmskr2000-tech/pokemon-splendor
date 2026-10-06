@@ -40,7 +40,7 @@ export const errorText = (code) => ERROR_TEXT[code] ?? `실행할 수 없어요 
 // `resume` ({ game, log }) restores a saved game instead of dealing a new one.
 // `hooks.onCatch(cardId, kind)` fires for the human's captures/evolutions, `hooks.onChange()` after
 // every accepted action, `hooks.onEnd(won)` once when the game finishes (persistence lives outside).
-export function createController({ cards, seed, humanName = '나', aiNames = ['지우', '이슬', '웅이'], resume = null, hooks = {} }) {
+export function createController({ cards, seed, humanName = '나', aiNames = ['지우', '이슬', '웅이'], resume = null, hooks = {}, difficulty = 'normal' }) {
   const cardsById = new Map(cards.map((c) => [c.id, c]));
   const game = resume?.game ?? createGame({
     cards,
@@ -61,6 +61,7 @@ export function createController({ cards, seed, humanName = '나', aiNames = ['�
     seed,
     humanName,
     aiNames,
+    difficulty: resume?.difficulty ?? difficulty,
     errors: 0, // failed applyAction calls (tests assert 0 for UI-generated actions)
 
     get state() { return this.game; },
@@ -223,13 +224,13 @@ export function createController({ cards, seed, humanName = '나', aiNames = ['�
     pass() { return this.dispatch({ type: 'pass' }); },
 
     snapshot() {
-      return { seed: this.seed, humanName: this.humanName, aiNames: this.aiNames, log: this.log, game: this.game };
+      return { seed: this.seed, humanName: this.humanName, aiNames: this.aiNames, difficulty: this.difficulty, log: this.log, game: this.game };
     },
 
     // One opponent action. Returns false when it is not an AI turn.
     stepAI(rnd) {
       if (this.finished || this.game.players[this.game.current].isAI !== true) return false;
-      this.dispatch(chooseAction(this.game, rnd));
+      this.dispatch(chooseAction(this.game, rnd, this.difficulty));
       return true;
     },
   };
