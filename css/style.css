@@ -448,3 +448,15 @@ button.orsv:hover { border-color: #4ade80; }
   font-size: 13px; cursor: pointer;
 }
 #inapp-x { background: transparent !important; color: #fff !important; border: none !important; font-size: 16px !important; }
+
+.airow {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  background: #2a2a45; border: 3px solid #1a1a2e; border-radius: 8px;
+  padding: 8px 12px; margin: 8px 0; font-size: 14px; color: #fff;
+}
+.aibtns { display: flex; gap: 6px; }
+.aibtn {
+  border: 2px solid #1a1a2e; border-radius: 6px; background: #4a4a6a; color: #fff;
+  padding: 6px 12px; font-size: 13px; cursor: pointer; font-family: inherit;
+}
+.aibtn.sel { background: #fbbf24; color: #1a1a2e; font-weight: bold; }

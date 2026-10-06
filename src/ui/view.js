@@ -1,12 +1,12 @@
 // Pure HTML-string renderers. Each takes the controller and returns markup; main.js owns the DOM.
 // All text interpolated here comes from our own card data / constants (no user input).
 
-import { COLORS, MASTER, PHASES, TOKEN_KEYS } from '../core/constants.js?v=1791273161';
-import { getBonuses, getPoints, tokenCount, bonusList, isSpecial } from '../core/engine.js?v=1791273161';
-import { BALLS, TRAINERS, evoText } from './controller.js?v=1791273161';
-import { dexSummary } from '../storage/store.js?v=1791273161';
-import { ACHIEVEMENTS } from '../data/achievements.js?v=1791273161';
-import { CHALLENGES, challengeProgress } from '../data/challenges.js?v=1791273161';
+import { COLORS, MASTER, PHASES, TOKEN_KEYS } from '../core/constants.js?v=1791273414';
+import { getBonuses, getPoints, tokenCount, bonusList, isSpecial } from '../core/engine.js?v=1791273414';
+import { BALLS, TRAINERS, evoText } from './controller.js?v=1791273414';
+import { dexSummary } from '../storage/store.js?v=1791273414';
+import { ACHIEVEMENTS } from '../data/achievements.js?v=1791273414';
+import { CHALLENGES, challengeProgress } from '../data/challenges.js?v=1791273414';
 
 const diffLabel = { easy: '쉬움', normal: '보통', hard: '어려움' };
 
@@ -577,6 +577,27 @@ export function challengeEndHTML(won, challenge) {
 
 // ---------- multiplayer rejoin ----------
 
+export function netHelpHTML() {
+  return `<div class="overlay"><div class="panel netpanel">
+    <div class="title">📡 대전 방법</div>
+    <div class="rules">
+      <h4>■ 연결하기 (2~4인)</h4>
+      <p>① 한 명이 <b>[방 만들기]</b>를 누르면 6자리 방 코드가 나와요.<br>
+      ② 친구에게 코드를 알려주세요 (카톡, 문자 등).<br>
+      ③ 친구는 <b>[참가하기]</b> → 코드 6자리 입력 → 연결 완료!<br>
+      ④ 2~4명이 모이면 방장이 <b>[게임 시작]</b>을 눌러요.</p>
+      <h4>■ 알아두면 좋아요</h4>
+      <p>• 같은 와이파이가 아니어도 돼요. 인터넷만 되면 OK.<br>
+      • 카톡 인앱 브라우저(팝업)보다 Safari·Chrome 앱에서 열면 안정적이에요.<br>
+      • 실수로 나가도 60초 안에 같은 코드로 들어오면 이어서 할 수 있어요.<br>
+      • 방장이 나가면 게임이 끝나요.<br>
+      • 인원이 부족하면 남는 자리를 AI로 채울 수 있어요 (방장 로비에서 선택).<br>
+      • 각자 자기 차례에만 둘 수 있어요.</p>
+    </div>
+    <div class="btnrow"><button class="btn primary" data-action="net-help-close">닫기</button></div>
+  </div></div>`;
+}
+
 export function rejoinWaitHTML(net) {
   const rows = Object.keys(net.dropped || {}).map((k) => {
     const name = net.names[Number(k)] || '게스트';
@@ -603,7 +624,8 @@ export function netHTML(net, notice = '') {
         <div class="btnrow"><button class="btn primary" data-action="net-host">방 만들기</button>
         <button class="btn primary" data-action="net-join">참가하기</button></div>
         <div class="btnrow">${modeBtn}
-        <button class="btn ghost" data-action="net-leave">닫기</button></div>`;
+        <button class="btn ghost" data-action="net-help">❓ 대전 방법</button></div>
+        <div class="btnrow"><button class="btn ghost" data-action="net-leave">닫기</button></div>`;
       break;
     }
     case 'hostname':
@@ -631,11 +653,16 @@ export function netHTML(net, notice = '') {
         ? `<div class="shortcode"><span>방 코드</span><b>${esc(net.shortCode)}</b></div>
            <p class="sheet-p">친구에게 이 6자리 코드를 알려주세요.</p>`
         : '';
+      const maxAi = Math.max(0, 4 - net.names.length);
+      const aiBtns = [0, 1, 2, 3].filter((n) => n <= maxAi).map((n) =>
+        `<button class="aibtn ${net.aiCount === n ? 'sel' : ''}" data-action="net-ai" data-n="${n}">${n === 0 ? '없음' : n + '명'}</button>`).join('');
+      const total = net.names.length + net.aiCount;
       body = `${codeHtml}<div class="roster">${roster}</div>
-        <p class="sheet-p">${net.names.length}명 모였어요. (최대 4명)</p>
+        ${maxAi > 0 ? `<div class="airow"><span>🤖 남는 자리 AI로 채우기</span><div class="aibtns">${aiBtns}</div></div>` : ''}
+        <p class="sheet-p">${net.names.length}명${net.aiCount ? ` + AI ${net.aiCount}명` : ''} (총 ${total}인)</p>
         <div class="btnrow">
         ${!net.usePeer && net.names.length < 4 ? '<button class="btn alt" data-action="net-host-invite">➕ 게스트 초대</button>' : ''}
-        <button class="btn primary" data-action="net-host-start" ${net.names.length < 2 ? 'disabled' : ''}>게임 시작</button>
+        <button class="btn primary" data-action="net-host-start" ${total < 2 ? 'disabled' : ''}>게임 시작</button>
         <button class="btn ghost" data-action="net-leave">나가기</button></div>`;
       break;
     }

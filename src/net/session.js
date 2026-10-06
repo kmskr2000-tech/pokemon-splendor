@@ -1,11 +1,11 @@
 // Multiplayer session: owns the NetRoom, the lockstep protocol flow, and the
 // multiplayer controller. main.js only renders `session` state and forwards taps.
 
-import { CARDS } from '../data/cards.js?v=1791273161';
-import { createController } from '../ui/controller.js?v=1791273161';
-import { NetRoom } from './webrtc.js?v=1791273161';
-import { PeerRoom } from './peerroom.js?v=1791273161';
-import { MSG, makeMsg, stateHash } from './protocol.js?v=1791273161';
+import { CARDS } from '../data/cards.js?v=1791273414';
+import { createController } from '../ui/controller.js?v=1791273414';
+import { NetRoom } from './webrtc.js?v=1791273414';
+import { PeerRoom } from './peerroom.js?v=1791273414';
+import { MSG, makeMsg, stateHash } from './protocol.js?v=1791273414';
 
 const MAX_PLAYERS = 4;
 
@@ -33,6 +33,8 @@ export class NetSession {
     this.pendingPeer = -1;
     this.peerToPlayer = {}; // host: peerIdx -> playerIndex
     this.dropped = {}; // host: playerIndex -> { left, timer } while waiting for rejoin
+    this.aiCount = 0; // host lobby: AI seats to add (0..4-humanCount)
+    this.aiNames = [];
     this.ctrl = null;
   }
 
@@ -148,11 +150,21 @@ export class NetSession {
     this.room.broadcast(makeMsg(MSG.ROSTER, { names: this.names }));
   }
 
+  // AI seat names: trainer names not taken by humans.
+  pickAiNames() {
+    const pool = ['지우', '이슬', '웅이', '로이'].filter((n) => !this.names.includes(n));
+    const out = [];
+    for (let i = 0; i < this.aiCount; i++) out.push(pool[i] || `AI ${i + 1}`);
+    return out;
+  }
+
   hostStart() {
-    if (this.names.length < 2 || this.names.length > MAX_PLAYERS) return;
+    const total = this.names.length + this.aiCount;
+    if (this.names.length < 1 || total < 2 || total > MAX_PLAYERS) return;
     const seed = (crypto.getRandomValues(new Uint32Array(1))[0] || 1);
-    this.beginGame(seed, [...this.names], 0);
-    this.room.broadcast(makeMsg(MSG.START, { seed, names: this.names }));
+    this.aiNames = this.pickAiNames();
+    this.beginGame(seed, [...this.names], 0, this.aiNames);
+    this.room.broadcast(makeMsg(MSG.START, { seed, names: this.names, aiNames: this.aiNames }));
   }
 
   hostMsg(peerIdx, m) {
@@ -254,7 +266,7 @@ export class NetSession {
         this.cb.onRender();
         break;
       case MSG.START:
-        this.beginGame(m.seed, m.names, this.myIndex);
+        this.beginGame(m.seed, m.names, this.myIndex, m.aiNames || []);
         break;
       case MSG.ACTION: {
         if (this.phase !== 'playing' || !this.ctrl) return;
@@ -286,30 +298,33 @@ export class NetSession {
     else this.guestMsg(m);
   }
 
-  beginGame(seed, names, myIndex) {
+  beginGame(seed, names, myIndex, aiNames = []) {
     // Lockstep: every client builds the identical deterministic engine.
     // hooks are empty — no dex/save/achievement recording in multiplayer (v1).
-    const ctrl = createController({ cards: CARDS, seed, mp: { names, me: myIndex }, hooks: {} });
+    // AI seats (if any) are acted by the host; their actions are relayed like any other.
+    const ctrl = createController({ cards: CARDS, seed, mp: { names, me: myIndex, aiNames }, hooks: {} });
     const raw = ctrl.dispatch.bind(ctrl);
     const self = this;
     ctrl.dispatch = (action) => {
+      const actor = ctrl.game.current;
       const res = raw(action);
-      if (res.ok) self.sendAction(action);
+      if (res.ok) self.sendAction(action, actor);
       return res;
     };
     ctrl.applyRemote = (action) => raw(action);
     this.ctrl = ctrl;
     this.seed = seed;
     this.names = names;
+    this.aiNames = aiNames;
     this.myIndex = myIndex;
     this.phase = 'playing';
     this.cb.onGameStart(ctrl);
   }
 
-  sendAction(action) {
+  sendAction(action, fromIdx) {
     if (this.phase !== 'playing' || !this.ctrl) return;
     if (this.role === 'host') {
-      this.room.broadcast(makeMsg(MSG.ACTION, { from: this.myIndex, action, h: stateHash(this.ctrl.game) }));
+      this.room.broadcast(makeMsg(MSG.ACTION, { from: fromIdx ?? this.myIndex, action, h: stateHash(this.ctrl.game) }));
     } else {
       this.room.send(makeMsg(MSG.ACTION, { action }));
     }

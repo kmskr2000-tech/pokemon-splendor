@@ -41,14 +41,14 @@ function showInAppGuide() {
 }
 showInAppGuide();
 
-import { CARDS } from '../data/cards.js?v=1791273161';
-import { ACHIEVEMENTS, checkAchievements } from '../data/achievements.js?v=1791273161';
-import { CHALLENGES, challengeWon } from '../data/challenges.js?v=1791273161';
-import { createController } from './controller.js?v=1791273161';
-import * as V from './view.js?v=1791273161';
-import { NetSession } from '../net/session.js?v=1791273161';
-import { getBonuses, getPoints, bonusList } from '../core/engine.js?v=1791273161';
-import { browserStorage, loadDex, loadSave, saveGame, clearSave, recordCatch, recordGame, loadOptions, saveOptions, loadAchv, unlockAchv, loadRecords, recordResult, victoryScore, loadChal, completeChal } from '../storage/store.js?v=1791273161';
+import { CARDS } from '../data/cards.js?v=1791273414';
+import { ACHIEVEMENTS, checkAchievements } from '../data/achievements.js?v=1791273414';
+import { CHALLENGES, challengeWon } from '../data/challenges.js?v=1791273414';
+import { createController } from './controller.js?v=1791273414';
+import * as V from './view.js?v=1791273414';
+import { NetSession } from '../net/session.js?v=1791273414';
+import { getBonuses, getPoints, bonusList } from '../core/engine.js?v=1791273414';
+import { browserStorage, loadDex, loadSave, saveGame, clearSave, recordCatch, recordGame, loadOptions, saveOptions, loadAchv, unlockAchv, loadRecords, recordResult, victoryScore, loadChal, completeChal } from '../storage/store.js?v=1791273414';
 
 const params = new URLSearchParams(location.search);
 const AI_DELAY = params.has('fast') ? 0 : 1600; // ?fast=1 skips the pacing delay (tests)
@@ -72,6 +72,7 @@ let ctrl = null;
 let aiTimer = null;
 let net = null; // NetSession while in multiplayer menu/lobby/game
 let netNotice = ''; // one-shot notice shown on the start/net screen
+let netHelpOpen = false;
 let dexOpen = false;
 let rulesOpen = false;
 let achvOpen = false;
@@ -94,7 +95,9 @@ function render() {
   checkChallenge();
   if (ctrl) for (const [id, fn] of Object.values(regions)) setHTML(id, fn(ctrl));
   let overlay;
-  if (net && !ctrl) {
+  if (netHelpOpen && net) {
+    overlay = V.netHelpHTML();
+  } else if (net && !ctrl) {
     overlay = V.netHTML(net, netNotice);
     netNotice = '';
   } else if (net && ctrl && !ctrl.finished && net.dropped && Object.keys(net.dropped).length > 0) {
@@ -129,6 +132,8 @@ function checkChallenge() {
 
 function scheduleAI() {
   if (aiTimer || !ctrl || ctrl.finished || ctrl.isHumanTurn) return;
+  // In multiplayer, only the host acts for AI seats; guests wait for the relay.
+  if (net && net.phase === 'playing' && net.role !== 'host') return;
   aiTimer = setTimeout(() => {
     aiTimer = null;
     if (ctrl) {
@@ -388,6 +393,13 @@ document.addEventListener('click', (e) => {
     case 'net-join': if (net) { net.usePeer = true; net.phase = 'guestname'; netNotice = ''; } break;
     case 'net-manual': if (net) { net.usePeer = false; net.phase = 'menu'; netNotice = '수동 연결 모드: 코드를 두 번 주고받아야 해요.'; } break;
     case 'net-peer': if (net) { net.usePeer = true; net.phase = 'menu'; netNotice = ''; } break;
+    case 'net-ai': if (net) {
+      const n = Math.max(0, Math.min(4 - net.names.length, Number(d.n) || 0));
+      net.aiCount = n;
+      netNotice = '';
+    } break;
+    case 'net-help': netHelpOpen = true; break;
+    case 'net-help-close': netHelpOpen = false; break;
     case 'net-host-create': if (net) { netNotice = ''; net.hostCreate(savePlayerName(netInputVal('netname'))); return; } break;
     case 'net-host-invite': if (net) { netNotice = ''; net.hostInvite(); return; } break;
     case 'net-host-accept': if (net) { netNotice = ''; net.hostAcceptAnswer(netInputVal('netanswer')); return; } break;
@@ -400,7 +412,7 @@ document.addEventListener('click', (e) => {
       if (t) { t.select(); try { navigator.clipboard.writeText(t.value); netNotice = '복사됐어요.'; } catch { netNotice = '복사가 안 되면 직접 드래그해서 복사해주세요.'; } }
       break;
     }
-    case 'net-leave': if (net) { net.end(); return; } break;
+    case 'net-leave': if (net) { netHelpOpen = false; net.end(); return; } break;
     case 'tut-next': tutAdvance(); return;
     case 'tut-done': tutorial = null; break;
     case 'tut-skip': tutorial = null; break;

@@ -5,8 +5,8 @@
 import {
   COLORS, MASTER, PHASES, MAX_HAND,
   createGame, applyAction, legalActions, computePayment, evolveOptions, getCurrentPlayer, tokenCount,
-} from '../core/index.js?v=1791273161';
-import { chooseAction } from '../ai/heuristic.js?v=1791273161';
+} from '../core/index.js?v=1791273414';
+import { chooseAction } from '../ai/heuristic.js?v=1791273414';
 
 export const BALLS = {
   monster: { file: 'poke-ball', name: '몬스터볼', short: '몬스터' },
@@ -55,15 +55,20 @@ function secretPersonalities(seed, playerCount) {
 // every accepted action, `hooks.onEnd(won)` once when the game finishes (persistence lives outside).
 export function createController({ cards, seed, humanName = '나', aiNames = ['지우', '이슬', '웅이'], resume = null, hooks = {}, difficulty = 'normal', challenge = null, mp = null }) {
   const cardsById = new Map(cards.map((c) => [c.id, c]));
-  // mp: { names: [...], me: index } — multiplayer: all humans, `me` is the local player.
-  const mpPlayers = mp ? mp.names.map((name, i) => ({ name, isAI: false, remote: i !== mp.me })) : null;
+  // mp: { names: [...humanNames], me: index, aiNames: [...] } — multiplayer.
+  // Humans first, then AI seats (acted by the host, relayed to guests).
+  const mpPlayers = mp ? [
+    ...mp.names.map((name) => ({ name, isAI: false })),
+    ...((mp.aiNames || []).map((name) => ({ name, isAI: true }))),
+  ] : null;
+  const playerCount = mpPlayers ? mpPlayers.length : 1 + aiNames.length;
   const game = resume?.game ?? createGame({
     cards,
     seed,
     players: mpPlayers ?? [{ name: humanName, isAI: false }, ...aiNames.map((name) => ({ name, isAI: true }))],
   });
-  // createGame only copies whitelisted fields; re-attach the remote flag for mp.
-  if (mp) game.players.forEach((p, i) => { p.remote = i !== mp.me; });
+  // createGame only copies whitelisted fields; re-attach the remote flag for mp humans.
+  if (mp) game.players.forEach((p, i) => { p.remote = !p.isAI && i !== mp.me; });
 
   const ctrl = {
     game,
@@ -84,7 +89,7 @@ export function createController({ cards, seed, humanName = '나', aiNames = ['�
     challengeDone: null, // 'won' | 'lost' once the challenge resolves
     humanTurns: 0, // completed turns by the human (for challenge limits)
     // Secret AI personalities: shuffled per game, hidden from the player.
-    aiPersonalities: resume?.aiPersonalities ?? secretPersonalities(seed, 1 + aiNames.length),
+    aiPersonalities: resume?.aiPersonalities ?? secretPersonalities(seed, playerCount),
     errors: 0, // failed applyAction calls (tests assert 0 for UI-generated actions)
 
     get state() { return this.game; },
