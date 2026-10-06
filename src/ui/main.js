@@ -41,14 +41,14 @@ function showInAppGuide() {
 }
 showInAppGuide();
 
-import { CARDS } from '../data/cards.js?v=1791273681';
-import { ACHIEVEMENTS, checkAchievements } from '../data/achievements.js?v=1791273681';
-import { CHALLENGES, challengeWon } from '../data/challenges.js?v=1791273681';
-import { createController } from './controller.js?v=1791273681';
-import * as V from './view.js?v=1791273681';
-import { NetSession } from '../net/session.js?v=1791273681';
-import { getBonuses, getPoints, bonusList } from '../core/engine.js?v=1791273681';
-import { browserStorage, loadDex, loadSave, saveGame, clearSave, recordCatch, recordGame, loadOptions, saveOptions, loadAchv, unlockAchv, loadRecords, recordResult, victoryScore, loadChal, completeChal } from '../storage/store.js?v=1791273681';
+import { CARDS } from '../data/cards.js?v=1791285678';
+import { ACHIEVEMENTS, checkAchievements } from '../data/achievements.js?v=1791285678';
+import { CHALLENGES, challengeWon } from '../data/challenges.js?v=1791285678';
+import { createController } from './controller.js?v=1791285678';
+import * as V from './view.js?v=1791285678';
+import { NetSession } from '../net/session.js?v=1791285678';
+import { getBonuses, getPoints, bonusList } from '../core/engine.js?v=1791285678';
+import { browserStorage, loadDex, loadSave, saveGame, clearSave, recordCatch, recordGame, loadOptions, saveOptions, loadAchv, unlockAchv, loadRecords, recordResult, victoryScore, loadChal, completeChal } from '../storage/store.js?v=1791285678';
 
 const params = new URLSearchParams(location.search);
 const AI_DELAY = params.has('fast') ? 0 : 1600; // ?fast=1 skips the pacing delay (tests)

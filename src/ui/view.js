@@ -1,12 +1,12 @@
 // Pure HTML-string renderers. Each takes the controller and returns markup; main.js owns the DOM.
 // All text interpolated here comes from our own card data / constants (no user input).
 
-import { COLORS, MASTER, PHASES, TOKEN_KEYS } from '../core/constants.js?v=1791273681';
-import { getBonuses, getPoints, tokenCount, bonusList, isSpecial } from '../core/engine.js?v=1791273681';
-import { BALLS, TRAINERS, evoText } from './controller.js?v=1791273681';
-import { dexSummary } from '../storage/store.js?v=1791273681';
-import { ACHIEVEMENTS } from '../data/achievements.js?v=1791273681';
-import { CHALLENGES, challengeProgress } from '../data/challenges.js?v=1791273681';
+import { COLORS, MASTER, PHASES, TOKEN_KEYS } from '../core/constants.js?v=1791285678';
+import { getBonuses, getPoints, tokenCount, bonusList, isSpecial } from '../core/engine.js?v=1791285678';
+import { BALLS, TRAINERS, evoText } from './controller.js?v=1791285678';
+import { dexSummary } from '../storage/store.js?v=1791285678';
+import { ACHIEVEMENTS } from '../data/achievements.js?v=1791285678';
+import { CHALLENGES, challengeProgress } from '../data/challenges.js?v=1791285678';
 
 const diffLabel = { easy: '쉬움', normal: '보통', hard: '어려움' };
 
@@ -25,6 +25,13 @@ const TRAINER_FACE = {
 export const trainerFaceSrc = (name) => TRAINER_FACE[name] ? `${ASSET}/trainers/${TRAINER_FACE[name]}.webp` : null;
 
 const ballImg = (key, cls = 'miniball') => `<img class="${cls}" src="${ballSrc(key)}" alt="${BALLS[key].name}">`;
+
+// Stacked balls: overlapping images (up to 3) + count number.
+const ballStack = (key, n, cls = 'mytkimg') => {
+  if (!n) return `${ballImg(key, cls)}<span class="tknum zero">0</span>`;
+  const imgs = Array(Math.min(n, 3)).fill(ballImg(key, cls)).join('');
+  return `<span class="bstack">${imgs}</span><span class="tknum">${n}</span>`;
+};
 // Escape user-supplied text (multiplayer names). Card data is trusted; names are not.
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const staticSprite = (card, cls = 'tiny') => `<img class="${cls}" src="${pokeSrc(card.dex)}" alt="">`;
@@ -108,7 +115,7 @@ export function opponentsHTML(ctrl) {
   const s = ctrl.state;
   return s.players.filter((p) => p.id !== ctrl.human).map((p) => {
     const tk = TOKEN_KEYS.filter((k) => p.tokens[k] > 0)
-      .map((k) => `<span class="otp">${ballImg(k, 'mini2')}${p.tokens[k]}</span>`).join('');
+      .map((k) => `<span class="otp">${ballStack(k, p.tokens[k], 'mini2')}</span>`).join('');
     return `
     <button class="opp px ${s.current === p.id && !ctrl.finished ? 'active' : ''}" data-action="opp" data-id="${p.id}">
       <div class="nm">${trainerFaceSrc(p.name) ? `<img class="tface" src="${trainerFaceSrc(p.name)}" alt="">` : ''}${p.isAI ? 'AI ' : '📡 '}${esc(p.name)}</div>
@@ -147,7 +154,7 @@ function tokensHTML(ctrl) {
     const d = ctrl.discard[k] || 0;
     const attr = discarding && me.tokens[k] > 0 ? `data-action="discard" data-token="${k}"` : 'disabled';
     const minus = discarding && d ? `<button class="tkminus" data-action="undiscard" data-token="${k}" aria-label="${BALLS[k].name} 반환 취소">−</button>` : '';
-    return `<span class="tkwrap"><button class="mytk ${d ? 'dsel' : ''}" ${attr}>${ballImg(k, 'mytkimg')}<span>${me.tokens[k]}</span>${d ? `<em>-${d}</em>` : ''}</button>${minus}</span>`;
+    return `<span class="tkwrap"><button class="mytk ${d ? 'dsel' : ''}" ${attr}>${ballStack(k, me.tokens[k])}${d ? `<em>-${d}</em>` : ''}</button>${minus}</span>`;
   }).join('');
 }
 
@@ -184,9 +191,10 @@ export function meHTML(ctrl) {
       <div class="tkcount ${tc >= 10 ? 'full' : ''}">볼 ${tc}/10</div>
       <div class="evcount">진화 ${me.evolved.length}회</div>
     </div>
-    <div class="mytokens">${tokensHTML(ctrl)}</div>
     <div class="lbl">■ 보너스 (할인)</div>
     <div class="pips big">${COLORS.map((c) => `<span class="pip d-${c}">${ballImg(c, 'mini2')}${b[c]}</span>`).join('')}</div>
+    <div class="lbl">■ 보유 볼</div>
+    <div class="mytokens">${tokensHTML(ctrl)}</div>
     <div class="lbl">■ 내 포켓몬 (${me.tableau.length})</div>
     <div class="mypoke">${tableauHTML(ctrl)}</div>
     <div class="lbl">■ 찜한 카드 (${me.hand.length}/3)</div>
@@ -268,7 +276,7 @@ export function aiToastHTML(ctrl) {
 function oppSheetHTML(p, ctrl) {
   const b = getBonuses(p);
   const tokens = TOKEN_KEYS.filter((k) => p.tokens[k] > 0)
-    .map((k) => `<span class="otk">${ballImg(k, 'mini2')}${p.tokens[k]}</span>`).join('') || '없음';
+    .map((k) => `<span class="otk">${ballStack(k, p.tokens[k], 'mini2')}</span>`).join('') || '없음';
   const groups = COLORS.map((c) => {
     const list = p.tableau.filter((card) => bonusList(card)[0] === c);
     if (!list.length) return '';
