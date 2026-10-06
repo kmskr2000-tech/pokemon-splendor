@@ -1,12 +1,12 @@
 // Pure HTML-string renderers. Each takes the controller and returns markup; main.js owns the DOM.
 // All text interpolated here comes from our own card data / constants (no user input).
 
-import { COLORS, MASTER, PHASES, TOKEN_KEYS } from '../core/constants.js?v=1791268977';
-import { getBonuses, getPoints, tokenCount, bonusList, isSpecial } from '../core/engine.js?v=1791268977';
-import { BALLS, TRAINERS, evoText } from './controller.js?v=1791268977';
-import { dexSummary } from '../storage/store.js?v=1791268977';
-import { ACHIEVEMENTS } from '../data/achievements.js?v=1791268977';
-import { CHALLENGES, challengeProgress } from '../data/challenges.js?v=1791268977';
+import { COLORS, MASTER, PHASES, TOKEN_KEYS } from '../core/constants.js?v=1791269366';
+import { getBonuses, getPoints, tokenCount, bonusList, isSpecial } from '../core/engine.js?v=1791269366';
+import { BALLS, TRAINERS, evoText } from './controller.js?v=1791269366';
+import { dexSummary } from '../storage/store.js?v=1791269366';
+import { ACHIEVEMENTS } from '../data/achievements.js?v=1791269366';
+import { CHALLENGES, challengeProgress } from '../data/challenges.js?v=1791269366';
 
 const diffLabel = { easy: '쉬움', normal: '보통', hard: '어려움' };
 

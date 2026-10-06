@@ -1,12 +1,27 @@
 // DOM glue: renders controller state into regions, wires taps, and paces AI turns.
 
-import { CARDS } from '../data/cards.js?v=1791268977';
-import { ACHIEVEMENTS, checkAchievements } from '../data/achievements.js?v=1791268977';
-import { CHALLENGES, challengeWon } from '../data/challenges.js?v=1791268977';
-import { createController } from './controller.js?v=1791268977';
-import * as V from './view.js?v=1791268977';
-import { getBonuses, getPoints, bonusList } from '../core/engine.js?v=1791268977';
-import { browserStorage, loadDex, loadSave, saveGame, clearSave, recordCatch, recordGame, loadOptions, saveOptions, loadAchv, unlockAchv, loadRecords, recordResult, victoryScore, loadChal, completeChal } from '../storage/store.js?v=1791268977';
+// Self-update: if a newer build is deployed, jump to the versioned URL so
+// browsers and home-screen web apps never sit on stale cached files.
+(async () => {
+  try {
+    const mine = window.__V;
+    if (!mine) return;
+    const r = await fetch('assets/version.json', { cache: 'no-store' });
+    const { v } = await r.json();
+    const param = new URLSearchParams(location.search).get('v');
+    if (v && v !== mine && param !== String(v)) {
+      location.replace(location.pathname + '?v=' + v);
+    }
+  } catch { /* offline or first deploy: stay put */ }
+})();
+
+import { CARDS } from '../data/cards.js?v=1791269366';
+import { ACHIEVEMENTS, checkAchievements } from '../data/achievements.js?v=1791269366';
+import { CHALLENGES, challengeWon } from '../data/challenges.js?v=1791269366';
+import { createController } from './controller.js?v=1791269366';
+import * as V from './view.js?v=1791269366';
+import { getBonuses, getPoints, bonusList } from '../core/engine.js?v=1791269366';
+import { browserStorage, loadDex, loadSave, saveGame, clearSave, recordCatch, recordGame, loadOptions, saveOptions, loadAchv, unlockAchv, loadRecords, recordResult, victoryScore, loadChal, completeChal } from '../storage/store.js?v=1791269366';
 
 const params = new URLSearchParams(location.search);
 const AI_DELAY = params.has('fast') ? 0 : 1600; // ?fast=1 skips the pacing delay (tests)
