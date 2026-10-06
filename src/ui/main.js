@@ -41,14 +41,16 @@ function showInAppGuide() {
 }
 showInAppGuide();
 
-import { CARDS } from '../data/cards.js?v=1791286273';
-import { ACHIEVEMENTS, checkAchievements } from '../data/achievements.js?v=1791286273';
-import { CHALLENGES, challengeWon } from '../data/challenges.js?v=1791286273';
-import { createController } from './controller.js?v=1791286273';
-import * as V from './view.js?v=1791286273';
-import { NetSession } from '../net/session.js?v=1791286273';
-import { getBonuses, getPoints, bonusList } from '../core/engine.js?v=1791286273';
-import { browserStorage, loadDex, loadSave, saveGame, clearSave, recordCatch, recordGame, loadOptions, saveOptions, loadAchv, unlockAchv, loadRecords, recordResult, victoryScore, loadChal, completeChal } from '../storage/store.js?v=1791286273';
+import { CARDS } from '../data/cards.js?v=1791291734';
+import { ACHIEVEMENTS, checkAchievements } from '../data/achievements.js?v=1791291734';
+import { CHALLENGES, challengeWon } from '../data/challenges.js?v=1791291734';
+import { createController } from './controller.js?v=1791291734';
+import * as V from './view.js?v=1791291734';
+import { NetSession } from '../net/session.js?v=1791291734';
+import { getBonuses, getPoints, bonusList } from '../core/engine.js?v=1791291734';
+import { startBGM, stopBGM, unlockAudio } from '../audio/bgm.js?v=1791291734';
+import { sfx, setSFXEnabled } from '../audio/sfx.js?v=1791291734';
+import { browserStorage, loadDex, loadSave, saveGame, clearSave, recordCatch, recordGame, loadOptions, saveOptions, loadAchv, unlockAchv, loadRecords, recordResult, victoryScore, loadChal, completeChal } from '../storage/store.js?v=1791291734';
 
 const params = new URLSearchParams(location.search);
 const AI_DELAY = params.has('fast') ? 0 : 1600; // ?fast=1 skips the pacing delay (tests)
@@ -82,6 +84,7 @@ let tutorial = null; // { step } — guided first-game tutorial
 let optionsOpen = false;
 const storage = browserStorage();
 const options = loadOptions(storage);
+setSFXEnabled(options.sfx);
 
 const $ = (id) => document.getElementById(id);
 
@@ -91,8 +94,27 @@ function setHTML(id, html) {
   $(id).innerHTML = html;
 }
 
+let lastFinished = false;
+let lastTurnPlayer = -1;
+
 function render() {
   checkChallenge();
+  // Game end SFX (once)
+  if (ctrl && ctrl.finished && !lastFinished) {
+    lastFinished = true;
+    const won = ctrl.state.ranking && ctrl.state.ranking[0]?.player === ctrl.human;
+    if (won) sfx.win(); else sfx.lose();
+  } else if (!ctrl || !ctrl.finished) {
+    lastFinished = false;
+  }
+  // Your-turn notification
+  if (ctrl && !ctrl.finished && ctrl.isHumanTurn && lastTurnPlayer !== ctrl.game.current) {
+    // Only notify when turn actually changed to us (not on first render)
+    if (lastTurnPlayer !== -1) sfx.yourTurn();
+  }
+  if (ctrl) lastTurnPlayer = ctrl.game.current;
+  else lastTurnPlayer = -1;
+
   if (ctrl) for (const [id, fn] of Object.values(regions)) setHTML(id, fn(ctrl));
   let overlay;
   if (netHelpOpen && net) {
@@ -297,6 +319,7 @@ function startGame(humanName) {
   saveGame(storage, ctrl.snapshot());
   Object.keys(cache).forEach((k) => delete cache[k]);
   window.__ctrl = ctrl; // debugging / automated tests
+  if (options.bgm) startBGM('main');
   render();
 }
 
@@ -348,6 +371,9 @@ const netInputVal = (id) => document.getElementById(id)?.value ?? '';
 document.addEventListener('click', (e) => {
   const el = e.target.closest('[data-action]');
   if (!el || el.disabled) return;
+  // Unlock audio on first interaction; start menu BGM if enabled.
+  unlockAudio();
+  if (options.bgm && !ctrl) startBGM('calm');
   const d = el.dataset;
   switch (d.action) {
     case 'start': startGame(d.name); return;
@@ -369,6 +395,16 @@ document.addEventListener('click', (e) => {
       options.beginnerHelp = !options.beginnerHelp;
       saveOptions(storage, options);
       break;
+    case 'toggle-bgm':
+      options.bgm = !options.bgm;
+      saveOptions(storage, options);
+      if (options.bgm) startBGM(ctrl ? 'main' : 'calm'); else stopBGM();
+      break;
+    case 'toggle-sfx':
+      options.sfx = !options.sfx;
+      saveOptions(storage, options);
+      setSFXEnabled(options.sfx);
+      break;
     case 'difficulty':
       if (['easy', 'normal', 'hard'].includes(d.v)) {
         options.difficulty = d.v;
@@ -386,7 +422,9 @@ document.addEventListener('click', (e) => {
     }
     case 'restart':
       if (net) net.end();
-      ctrl = null; tutorial = null; optionsOpen = false; clearTimeout(aiTimer); aiTimer = null; break;
+      ctrl = null; tutorial = null; optionsOpen = false; clearTimeout(aiTimer); aiTimer = null;
+      if (options.bgm) startBGM('calm');
+      break;
     case 'tutorial': startTutorial(); return;
     // ----- multiplayer -----
     case 'net': openNet(); break;
@@ -424,6 +462,7 @@ document.addEventListener('click', (e) => {
       const colors = [...ctrl.balls];
       const snap = snapshotMovables();
       ctrl.confirmBalls();
+      sfx.takeBall();
       if (tutorial && tutorial.step === 0) tutorial.step = 1;
       render();
       flyBalls(snap, colors, document.getElementById('me'));
@@ -434,7 +473,11 @@ document.addEventListener('click', (e) => {
     case 'close': ctrl.closeSheet(); break;
     case 'buy': {
       const snap = snapshotMovables();
+      const card = ctrl.cardsById.get(d.card);
+      const isMaster = card && (card.tier === 'rare' || card.tier === 'legend');
       ctrl.buy(d.card);
+      sfx.catch();
+      if (isMaster) setTimeout(() => sfx.masterBall(), 200);
       if (tutorial && tutorial.step === 1) tutorial.step = 2;
       render();
       flyClone(snap.get('card:' + d.card), document.getElementById('me'));
@@ -443,16 +486,17 @@ document.addEventListener('click', (e) => {
     case 'reserve': {
       const snap = snapshotMovables();
       ctrl.reserveCard(d.card);
+      sfx.reserve();
       if (tutorial && tutorial.step === 1) tutorial.step = 2;
       render();
       flyClone(snap.get('card:' + d.card), document.getElementById('me'));
       return;
     }
-    case 'reserve-deck': ctrl.reserveDeck(d.tier); break;
+    case 'reserve-deck': ctrl.reserveDeck(d.tier); sfx.reserve(); break;
     case 'discard': ctrl.toggleDiscard(d.token); break;
     case 'undiscard': ctrl.undoDiscard(d.token); break;
-    case 'confirm-discard': ctrl.confirmDiscard(); break;
-    case 'evolve': ctrl.evolve(d.card); break;
+    case 'confirm-discard': ctrl.confirmDiscard(); sfx.discard(); break;
+    case 'evolve': ctrl.evolve(d.card); sfx.evolve(); break;
     case 'skip-evolve': ctrl.skipEvolve(); break;
     case 'pass': ctrl.pass(); break;
     default: return;

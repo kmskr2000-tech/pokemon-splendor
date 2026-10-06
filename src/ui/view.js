@@ -1,12 +1,12 @@
 // Pure HTML-string renderers. Each takes the controller and returns markup; main.js owns the DOM.
 // All text interpolated here comes from our own card data / constants (no user input).
 
-import { COLORS, MASTER, PHASES, TOKEN_KEYS } from '../core/constants.js?v=1791286273';
-import { getBonuses, getPoints, tokenCount, bonusList, isSpecial } from '../core/engine.js?v=1791286273';
-import { BALLS, TRAINERS, evoText } from './controller.js?v=1791286273';
-import { dexSummary } from '../storage/store.js?v=1791286273';
-import { ACHIEVEMENTS } from '../data/achievements.js?v=1791286273';
-import { CHALLENGES, challengeProgress } from '../data/challenges.js?v=1791286273';
+import { COLORS, MASTER, PHASES, TOKEN_KEYS } from '../core/constants.js?v=1791291734';
+import { getBonuses, getPoints, tokenCount, bonusList, isSpecial } from '../core/engine.js?v=1791291734';
+import { BALLS, TRAINERS, evoText } from './controller.js?v=1791291734';
+import { dexSummary } from '../storage/store.js?v=1791291734';
+import { ACHIEVEMENTS } from '../data/achievements.js?v=1791291734';
+import { CHALLENGES, challengeProgress } from '../data/challenges.js?v=1791291734';
 
 const diffLabel = { easy: '쉬움', normal: '보통', hard: '어려움' };
 
@@ -451,6 +451,14 @@ export function optionsHTML(options) {
       <span class="toggle ${options.beginnerHelp ? 'on' : ''}">${options.beginnerHelp ? '켬' : '끔'}</span>
     </button>
     <p class="sheet-p">게임 중 상황에 맞는 도움말을 보여줘요.</p>
+    <button class="optrow" data-action="toggle-bgm">
+      <span>🎵 배경음악</span>
+      <span class="toggle ${options.bgm ? 'on' : ''}">${options.bgm ? '켬' : '끔'}</span>
+    </button>
+    <button class="optrow" data-action="toggle-sfx">
+      <span>🔔 효과음</span>
+      <span class="toggle ${options.sfx ? 'on' : ''}">${options.sfx ? '켬' : '끔'}</span>
+    </button>
     <div class="btnrow"><button class="btn ghost" data-action="restart">타이틀로 돌아가기</button></div>
     <div class="btnrow"><button class="btn primary" data-action="options-close">닫기</button></div>
   </div></div>`;
