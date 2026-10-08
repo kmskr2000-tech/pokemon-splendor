@@ -16,7 +16,7 @@
 //       toHost/{pushId}: { from: guestId, data: msgString }
 //       toGuest/{guestId}/{pushId}: { data: msgString }
 
-import { parseMsg } from './protocol.js?v=1791449037';
+import { parseMsg } from './protocol.js?v=1791449359';
 
 const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // no confusing 0/O/1/I
 const ROOMS_PATH = 'pkmspl-rooms';
@@ -62,11 +62,14 @@ export async function listRooms() {
   const snap = await db.ref(ROOMS_PATH).once('value');
   const rooms = [];
   if (!snap.exists()) return rooms;
+  const now = Date.now();
+  const MAX_AGE_MS = 2 * 60 * 60 * 1000; // 2 hours
   snap.forEach((child) => {
     const code = child.key;
     const r = child.val() || {};
-    // Only show rooms that haven't started a game yet.
+    // Skip started games and stale ghost rooms.
     if (r.started) return;
+    if (r.created && now - r.created > MAX_AGE_MS) return;
     const guests = r.guests ? Object.keys(r.guests).length : 0;
     rooms.push({
       code,
@@ -87,11 +90,14 @@ export function watchRooms(cb) {
   const ref = db.ref(ROOMS_PATH);
   const handler = (snap) => {
     const rooms = [];
+    const now = Date.now();
+    const MAX_AGE_MS = 2 * 60 * 60 * 1000; // 2 hours
     if (snap.exists()) {
       snap.forEach((child) => {
         const code = child.key;
         const r = child.val() || {};
         if (r.started) return;
+        if (r.created && now - r.created > MAX_AGE_MS) return;
         const guests = r.guests ? Object.keys(r.guests).length : 0;
         rooms.push({
           code,
@@ -248,6 +254,22 @@ export class FirebaseRoom {
         inboxRef.on('value', cb);
         this._dbRefs.push({ ref: inboxRef, cb });
 
+        // Fallback: if host started the game but START msg was missed,
+        // the room's startInfo will trigger beginGame via onmessage.
+        const roomRef = db.ref(`${ROOMS_PATH}/${clean}`);
+        const startCb = (snap) => {
+          if (!snap.exists() || this._joinToken !== token) return;
+          const r = snap.val() || {};
+          if (r.started && r.startInfo && !this._startFallbackDone) {
+            this._startFallbackDone = true;
+            const si = r.startInfo;
+            // Simulate receiving START message.
+            this.onmessage(0, { t: 'start', seed: si.seed, names: si.names, aiNames: si.aiNames || [] });
+          }
+        };
+        roomRef.on('value', startCb);
+        this._dbRefs.push({ ref: roomRef, cb: startCb });
+
         // Wait for host to acknowledge (host writes welcome via normal message flow).
         // We consider join successful once the inbox listener is active.
         // The session's HELLO/WELCOME exchange happens via onmessage.
@@ -278,6 +300,17 @@ export class FirebaseRoom {
     if (this.isHost || !this.code || !this.myGuestId || !this._db) return;
     try {
       await this._db.ref(`${ROOMS_PATH}/${this.code}/guests/${this.myGuestId}/name`).set(name);
+    } catch {}
+  }
+
+  /** Host: mark room as started (removes from lobby, fallback for START msg). */
+  async markStarted(startInfo) {
+    if (!this.isHost || !this.code || !this._db) return;
+    try {
+      await this._db.ref(`${ROOMS_PATH}/${this.code}`).update({
+        started: true,
+        startInfo: startInfo || null,
+      });
     } catch {}
   }
 

@@ -1,11 +1,11 @@
 // Multiplayer session: owns the NetRoom, the lockstep protocol flow, and the
 // multiplayer controller. main.js only renders `session` state and forwards taps.
 
-import { CARDS } from '../data/cards.js?v=1791449037';
-import { createController } from '../ui/controller.js?v=1791449037';
-import { NetRoom } from './webrtc.js?v=1791449037';
-import { FirebaseRoom } from './fireroom.js?v=1791449037';
-import { MSG, makeMsg, stateHash } from './protocol.js?v=1791449037';
+import { CARDS } from '../data/cards.js?v=1791449359';
+import { createController } from '../ui/controller.js?v=1791449359';
+import { NetRoom } from './webrtc.js?v=1791449359';
+import { FirebaseRoom } from './fireroom.js?v=1791449359';
+import { MSG, makeMsg, stateHash } from './protocol.js?v=1791449359';
 
 const MAX_PLAYERS = 4;
 
@@ -165,6 +165,11 @@ export class NetSession {
     this.aiNames = this.pickAiNames();
     this.beginGame(seed, [...this.names], 0, this.aiNames);
     this.room.broadcast(makeMsg(MSG.START, { seed, names: this.names, aiNames: this.aiNames }));
+    // Mark room as started so it disappears from lobby. Also write start info
+    // as a fallback in case the broadcast message is missed.
+    if (this.room && typeof this.room.markStarted === 'function') {
+      this.room.markStarted({ seed, names: this.names, aiNames: this.aiNames }).catch(() => {});
+    }
   }
 
   hostMsg(peerIdx, m) {
