@@ -16,7 +16,7 @@
 //       toHost/{pushId}: { from: guestId, data: msgString }
 //       toGuest/{guestId}/{pushId}: { data: msgString }
 
-import { parseMsg } from './protocol.js?v=1791449359';
+import { parseMsg } from './protocol.js?v=1791453840';
 
 const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // no confusing 0/O/1/I
 const ROOMS_PATH = 'pkmspl-rooms';
@@ -63,7 +63,7 @@ export async function listRooms() {
   const rooms = [];
   if (!snap.exists()) return rooms;
   const now = Date.now();
-  const MAX_AGE_MS = 2 * 60 * 60 * 1000; // 2 hours
+  const MAX_AGE_MS = 30 * 60 * 1000; // 30 min
   snap.forEach((child) => {
     const code = child.key;
     const r = child.val() || {};
@@ -91,7 +91,7 @@ export function watchRooms(cb) {
   const handler = (snap) => {
     const rooms = [];
     const now = Date.now();
-    const MAX_AGE_MS = 2 * 60 * 60 * 1000; // 2 hours
+    const MAX_AGE_MS = 30 * 60 * 1000; // 30 min
     if (snap.exists()) {
       snap.forEach((child) => {
         const code = child.key;
