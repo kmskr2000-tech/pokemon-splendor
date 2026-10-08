@@ -16,7 +16,7 @@
 //       toHost/{pushId}: { from: guestId, data: msgString }
 //       toGuest/{guestId}/{pushId}: { data: msgString }
 
-import { parseMsg } from './protocol.js?v=1791448073';
+import { parseMsg } from './protocol.js?v=1791448307';
 
 const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // no confusing 0/O/1/I
 const ROOMS_PATH = 'pkmspl-rooms';
@@ -56,6 +56,59 @@ function getDb() {
   return _db;
 }
 
+/** List available rooms for the lobby. Returns [{code, title, hostName, playerCount, created}]. */
+export async function listRooms() {
+  const db = getDb();
+  const snap = await db.ref(ROOMS_PATH).once('value');
+  const rooms = [];
+  if (!snap.exists()) return rooms;
+  snap.forEach((child) => {
+    const code = child.key;
+    const r = child.val() || {};
+    // Only show rooms that haven't started a game yet.
+    if (r.started) return;
+    const guests = r.guests ? Object.keys(r.guests).length : 0;
+    rooms.push({
+      code,
+      title: r.title || '제목 없음',
+      hostName: r.hostName || '?',
+      playerCount: 1 + guests, // host + guests
+      created: r.created || 0,
+    });
+  });
+  // Newest first.
+  rooms.sort((a, b) => b.created - a.created);
+  return rooms;
+}
+
+/** Watch room list changes. Returns unsubscribe function. */
+export function watchRooms(cb) {
+  const db = getDb();
+  const ref = db.ref(ROOMS_PATH);
+  const handler = (snap) => {
+    const rooms = [];
+    if (snap.exists()) {
+      snap.forEach((child) => {
+        const code = child.key;
+        const r = child.val() || {};
+        if (r.started) return;
+        const guests = r.guests ? Object.keys(r.guests).length : 0;
+        rooms.push({
+          code,
+          title: r.title || '제목 없음',
+          hostName: r.hostName || '?',
+          playerCount: 1 + guests,
+          created: r.created || 0,
+        });
+      });
+      rooms.sort((a, b) => b.created - a.created);
+    }
+    cb(rooms);
+  };
+  ref.on('value', handler);
+  return () => { try { ref.off('value', handler); } catch {} };
+}
+
 export class FirebaseRoom {
   constructor({ onmessage = () => {}, onjoin = () => {}, onleave = () => {} } = {}) {
     this.onmessage = onmessage;
@@ -86,7 +139,7 @@ export class FirebaseRoom {
   // ---------- host ----------
 
   /** Host: create a room, return the 6-char code. */
-  async hostCreate() {
+  async hostCreate(hostName = '', title = '') {
     this.isHost = true;
     const db = getDb();
     this._db = db;
@@ -95,7 +148,11 @@ export class FirebaseRoom {
       const roomRef = db.ref(`${ROOMS_PATH}/${code}`);
       const snap = await roomRef.once('value');
       if (snap.exists()) continue;
-      await roomRef.set({ created: Date.now() });
+      await roomRef.set({
+        created: Date.now(),
+        title: title || `${hostName}의 방`,
+        hostName: hostName || '?',
+      });
       this.code = code;
       // Listen for new guests.
       const guestsRef = db.ref(`${ROOMS_PATH}/${code}/guests`);

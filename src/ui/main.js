@@ -41,16 +41,17 @@ function showInAppGuide() {
 }
 showInAppGuide();
 
-import { CARDS } from '../data/cards.js?v=1791448073';
-import { ACHIEVEMENTS, checkAchievements } from '../data/achievements.js?v=1791448073';
-import { CHALLENGES, challengeWon } from '../data/challenges.js?v=1791448073';
-import { createController } from './controller.js?v=1791448073';
-import * as V from './view.js?v=1791448073';
-import { NetSession } from '../net/session.js?v=1791448073';
-import { getBonuses, getPoints, bonusList } from '../core/engine.js?v=1791448073';
-import { startBGM, stopBGM, unlockAudio } from '../audio/bgm.js?v=1791448073';
-import { sfx, setSFXEnabled } from '../audio/sfx.js?v=1791448073';
-import { browserStorage, loadDex, loadSave, saveGame, clearSave, recordCatch, recordGame, loadOptions, saveOptions, loadAchv, unlockAchv, loadRecords, recordResult, victoryScore, loadChal, completeChal } from '../storage/store.js?v=1791448073';
+import { CARDS } from '../data/cards.js?v=1791448307';
+import { ACHIEVEMENTS, checkAchievements } from '../data/achievements.js?v=1791448307';
+import { CHALLENGES, challengeWon } from '../data/challenges.js?v=1791448307';
+import { createController } from './controller.js?v=1791448307';
+import * as V from './view.js?v=1791448307';
+import { NetSession } from '../net/session.js?v=1791448307';
+import { listRooms, watchRooms } from '../net/fireroom.js?v=1791448307';
+import { getBonuses, getPoints, bonusList } from '../core/engine.js?v=1791448307';
+import { startBGM, stopBGM, unlockAudio } from '../audio/bgm.js?v=1791448307';
+import { sfx, setSFXEnabled } from '../audio/sfx.js?v=1791448307';
+import { browserStorage, loadDex, loadSave, saveGame, clearSave, recordCatch, recordGame, loadOptions, saveOptions, loadAchv, unlockAchv, loadRecords, recordResult, victoryScore, loadChal, completeChal } from '../storage/store.js?v=1791448307';
 
 const params = new URLSearchParams(location.search);
 const AI_DELAY = params.has('fast') ? 0 : 1600; // ?fast=1 skips the pacing delay (tests)
@@ -350,11 +351,38 @@ function openNet() {
       window.__ctrl = ctrl; // debugging / automated tests
       render();
     },
-    onGameEnd: () => { net = null; ctrl = null; render(); },
+    onGameEnd: () => { stopLobbyWatch(); net = null; ctrl = null; render(); },
     onNotice: (msg) => { netNotice = msg; render(); },
   });
   net.myName = options.playerName || ''; // pre-fill saved name
+  net.roomList = [];
+  refreshLobby();
   render();
+}
+
+let _lobbyUnwatch = null;
+
+function refreshLobby() {
+  if (!net || !net.usePeer) return;
+  listRooms().then((rooms) => {
+    if (!net) return;
+    net.roomList = rooms;
+    render();
+  }).catch(() => {});
+  // Watch for live updates (only one watcher at a time).
+  stopLobbyWatch();
+  try {
+    _lobbyUnwatch = watchRooms((rooms) => {
+      if (!net) return;
+      net.roomList = rooms;
+      // Only re-render if we're on the lobby screen.
+      if (net.phase === 'menu') render();
+    });
+  } catch {}
+}
+
+function stopLobbyWatch() {
+  if (_lobbyUnwatch) { try { _lobbyUnwatch(); } catch {} _lobbyUnwatch = null; }
 }
 
 function savePlayerName(name) {
@@ -428,7 +456,23 @@ document.addEventListener('click', (e) => {
     case 'tutorial': startTutorial(); return;
     // ----- multiplayer -----
     case 'net': openNet(); break;
-    case 'net-menu': if (net) { net.phase = 'menu'; netNotice = ''; } break;
+    case 'net-menu': if (net) { net.phase = 'menu'; netNotice = ''; refreshLobby(); } break;
+    case 'net-lobby-refresh': if (net) { refreshLobby(); } break;
+    case 'net-lobby-join': if (net) {
+      const code = d.code;
+      if (!code) break;
+      // If name is set, join directly. Otherwise ask for name first.
+      if (net.myName && net.myName.trim()) {
+        netNotice = '';
+        net.guestJoin(net.myName, code);
+        return;
+      } else {
+        net.pendingJoinCode = code;
+        net.phase = 'guestname';
+        netNotice = '';
+      }
+      break;
+    }
     case 'net-host': if (net) { net.usePeer = true; net.phase = 'hostname'; netNotice = ''; } break;
     case 'net-join': if (net) { net.usePeer = true; net.phase = 'guestname'; netNotice = ''; } break;
     case 'net-manual': if (net) { net.usePeer = false; net.phase = 'menu'; netNotice = '수동 연결 모드: 코드를 두 번 주고받아야 해요.'; } break;
@@ -440,12 +484,31 @@ document.addEventListener('click', (e) => {
     } break;
     case 'net-help': netHelpOpen = true; break;
     case 'net-help-close': netHelpOpen = false; break;
-    case 'net-host-create': if (net) { netNotice = ''; net.hostCreate(savePlayerName(netInputVal('netname'))); return; } break;
+    case 'net-host-create': if (net) {
+      netNotice = '';
+      const name = savePlayerName(netInputVal('netname'));
+      const titleEl = document.getElementById('nettitle');
+      const title = titleEl ? titleEl.value.trim().slice(0, 20) : '';
+      net.hostCreate(name, title);
+      return;
+    } break;
     case 'net-host-invite': if (net) { netNotice = ''; net.hostInvite(); return; } break;
     case 'net-host-accept': if (net) { netNotice = ''; net.hostAcceptAnswer(netInputVal('netanswer')); return; } break;
     case 'net-host-lobby': if (net) { net.phase = 'hostlobby'; netNotice = ''; } break;
     case 'net-host-start': if (net) { netNotice = ''; net.hostStart(); } break;
-    case 'net-guest-next': if (net) { net.myName = savePlayerName(netInputVal('netname')); net.phase = 'guestjoin'; netNotice = ''; } break;
+    case 'net-guest-next': if (net) {
+      net.myName = savePlayerName(netInputVal('netname'));
+      netNotice = '';
+      // If we came from lobby with a pending room, join it directly.
+      if (net.pendingJoinCode) {
+        const code = net.pendingJoinCode;
+        net.pendingJoinCode = null;
+        net.guestJoin(net.myName, code);
+        return;
+      }
+      net.phase = 'guestjoin';
+      break;
+    } break;
     case 'net-guest-join': if (net) { netNotice = ''; net.guestJoin(net.myName, netInputVal('netoffer')); return; } break;
     case 'net-cancel-join': if (net) { net.cancelGuestJoin(); } break;
     case 'net-copy': {

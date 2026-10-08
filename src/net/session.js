@@ -1,11 +1,11 @@
 // Multiplayer session: owns the NetRoom, the lockstep protocol flow, and the
 // multiplayer controller. main.js only renders `session` state and forwards taps.
 
-import { CARDS } from '../data/cards.js?v=1791448073';
-import { createController } from '../ui/controller.js?v=1791448073';
-import { NetRoom } from './webrtc.js?v=1791448073';
-import { FirebaseRoom } from './fireroom.js?v=1791448073';
-import { MSG, makeMsg, stateHash } from './protocol.js?v=1791448073';
+import { CARDS } from '../data/cards.js?v=1791448307';
+import { createController } from '../ui/controller.js?v=1791448307';
+import { NetRoom } from './webrtc.js?v=1791448307';
+import { FirebaseRoom } from './fireroom.js?v=1791448307';
+import { MSG, makeMsg, stateHash } from './protocol.js?v=1791448307';
 
 const MAX_PLAYERS = 4;
 
@@ -82,7 +82,7 @@ export class NetSession {
 
   // ---------- host ----------
 
-  async hostCreate(name) {
+  async hostCreate(name, title = '') {
     this.role = 'host';
     this.myName = this.cleanName(name);
     this.names = [this.myName];
@@ -94,7 +94,7 @@ export class NetSession {
     this.cb.onRender();
     try {
       if (this.usePeer) {
-        this.shortCode = await this.room.hostCreate();
+        this.shortCode = await this.room.hostCreate(this.myName, title);
         this.phase = 'hostlobby';
       } else {
         const { peerIdx, code } = await this.room.createOffer();

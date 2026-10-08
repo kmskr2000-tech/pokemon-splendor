@@ -460,3 +460,12 @@ button.orsv:hover { border-color: #4ade80; }
   padding: 6px 12px; font-size: 13px; cursor: pointer; font-family: inherit;
 }
 .aibtn.sel { background: #fbbf24; color: #1a1a2e; font-weight: bold; }
+
+.roomlist { display: flex; flex-direction: column; gap: 8px; margin: 8px 0; max-height: 300px; overflow-y: auto; }
+.roomitem {
+  background: #2a2a45; border: 3px solid #1a1a2e; border-radius: 8px;
+  padding: 10px 12px; cursor: pointer; color: #fff;
+}
+.roomitem:active { background: #3a3a55; }
+.roomtitle { font-weight: bold; font-size: 15px; margin-bottom: 4px; }
+.roommeta { font-size: 13px; color: #a0a0c0; }
