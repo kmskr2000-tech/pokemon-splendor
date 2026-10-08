@@ -1,14 +1,14 @@
 // Multiplayer session: owns the NetRoom, the lockstep protocol flow, and the
 // multiplayer controller. main.js only renders `session` state and forwards taps.
 
-import { CARDS } from '../data/cards.js?v=1791467093';
-import { createController } from '../ui/controller.js?v=1791467093';
-import { NetRoom } from './webrtc.js?v=1791467093';
-import { FirebaseRoom } from './fireroom.js?v=1791467093';
-import { MSG, makeMsg, stateHash } from './protocol.js?v=1791467093';
+import { CARDS } from '../data/cards.js?v=1791476752';
+import { createController } from '../ui/controller.js?v=1791476752';
+import { NetRoom } from './webrtc.js?v=1791476752';
+import { FirebaseRoom } from './fireroom.js?v=1791476752';
+import { MSG, makeMsg, stateHash } from './protocol.js?v=1791476752';
 
 const MAX_PLAYERS = 4;
-const TURN_LIMIT_MS = 90 * 1000; // 90 seconds per turn
+const TURN_LIMIT_MS = 45 * 1000; // 45 seconds per turn
 
 export class NetSession {
   // cb: { onRender(), onGameStart(ctrl), onGameEnd(), onNotice(msg) }
