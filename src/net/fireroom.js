@@ -3,6 +3,9 @@
 // Game data still goes peer-to-peer over WebRTC DataChannel; Firebase is
 // only used to exchange SDP offers/answers and ICE candidates.
 //
+// Uses the Firebase compat SDK loaded via <script> tags in index.html
+// (firebase-app-compat.js + firebase-database-compat.js).
+//
 // Same room interface as PeerRoom so NetSession works unchanged:
 //   hostCreate() -> code | guestJoin(code, onRetry) | cancelJoin()
 //   send / sendTo / broadcast / onmessage / onjoin / onleave / close
@@ -16,7 +19,7 @@
 //       gc: {pushId: candidate}       <- guest ICE candidates
 //       hc: {pushId: candidate}       <- host ICE candidates
 
-import { parseMsg } from './protocol.js?v=1791295102';
+import { parseMsg } from './protocol.js?v=1791447014';
 
 const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // no confusing 0/O/1/I
 const ROOMS_PATH = 'pkmspl-rooms';
@@ -36,35 +39,28 @@ function genId(len = 12) {
 }
 
 let _db = null;
-let _sdkPromise = null;
 let _mockDb = null;
 
 /** For tests: inject a mock database. Pass null to reset. */
 export function __setMockDb(db) {
   _mockDb = db;
   _db = db;
-  if (!db) _sdkPromise = null;
 }
 
-async function getDb() {
+function getDb() {
   if (_db) return _db;
   if (_mockDb) { _db = _mockDb; return _db; }
-  if (!_sdkPromise) {
-    _sdkPromise = (async () => {
-      const appMod = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js?v=1791295102');
-      const dbMod = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js?v=1791295102');
-      const cfg = (typeof window !== 'undefined' && window.__FIREBASE_CONFIG) || null;
-      if (!cfg || !cfg.apiKey) throw new Error('firebase-not-configured');
-      const app = appMod.initializeApp(cfg);
-      _db = dbMod.getDatabase(app);
-      _db._mod = dbMod; // stash for reuse
-      return _db;
-    })();
+  // Firebase compat SDK loaded via <script> tags in index.html.
+  const fb = (typeof window !== 'undefined' && window.firebase) || null;
+  const cfg = (typeof window !== 'undefined' && window.__FIREBASE_CONFIG) || null;
+  if (!fb) throw new Error('firebase-sdk-not-loaded');
+  if (!cfg || !cfg.apiKey || cfg.apiKey === 'YOUR_API_KEY') throw new Error('firebase-not-configured');
+  if (!fb.apps || fb.apps.length === 0) {
+    fb.initializeApp(cfg);
   }
-  return _sdkPromise;
+  _db = fb.database();
+  return _db;
 }
-
-function dbMod(db) { return db._mod; }
 
 function makePC() {
   return new RTCPeerConnection({ iceServers: ICE_SERVERS });
@@ -77,7 +73,7 @@ export class FirebaseRoom {
     this.onleave = onleave;
     this.isHost = false;
     this.closed = false;
-    // host: [{pc, dc, guestId, listeners}]
+    // host: [{pc, dc, guestId}]
     // guest: single pc/dc to host
     this.peers = [];
     this.code = null;
@@ -86,17 +82,13 @@ export class FirebaseRoom {
   }
 
   _track(ref, cb) {
-    const db = this._db;
-    const m = dbMod(db);
-    m.onValue(ref, cb);
+    ref.on('value', cb);
     this._dbRefs.push({ ref, cb });
   }
 
   _untrackAll() {
-    if (!this._db) return;
-    const m = dbMod(this._db);
     for (const { ref, cb } of this._dbRefs) {
-      try { m.off(ref, 'value', cb); } catch {}
+      try { ref.off('value', cb); } catch {}
     }
     this._dbRefs = [];
   }
@@ -116,26 +108,29 @@ export class FirebaseRoom {
   /** Host: create a room, return the 6-char code. */
   async hostCreate() {
     this.isHost = true;
-    this._db = await getDb();
-    const m = dbMod(this._db);
+    const db = getDb();
+    if (db === _mockDb && _mockDb && _mockDb.__isMock) {
+      // Test mock path (not used in production).
+      throw new Error('mock-use-override');
+    }
     for (let i = 0; i < 4; i++) {
       const code = genCode();
-      const roomRef = m.ref(this._db, `${ROOMS_PATH}/${code}`);
-      const snap = await m.get(roomRef);
+      const roomRef = db.ref(`${ROOMS_PATH}/${code}`);
+      const snap = await roomRef.once('value');
       if (snap.exists()) continue; // collision, retry
-      await m.set(roomRef, { created: Date.now() });
+      await roomRef.set({ created: Date.now() });
       this.code = code;
+      this._db = db;
       // Listen for new guest handshakes.
-      const hsRef = m.ref(this._db, `${ROOMS_PATH}/${code}/handshakes`);
+      const hsRef = db.ref(`${ROOMS_PATH}/${code}/handshakes`);
       this._track(hsRef, (hsSnap) => this._onHandshakes(hsSnap));
       return code;
     }
     throw new Error('room-create-failed');
   }
 
-  async _onHandshakes(hsSnap) {
+  _onHandshakes(hsSnap) {
     if (this.closed || !hsSnap.exists()) return;
-    const m = dbMod(this._db);
     hsSnap.forEach((child) => {
       const guestId = child.key;
       const hs = child.val() || {};
@@ -147,7 +142,7 @@ export class FirebaseRoom {
   }
 
   async _acceptGuest(guestId, offer) {
-    const m = dbMod(this._db);
+    const db = this._db;
     const base = `${ROOMS_PATH}/${this.code}/handshakes/${guestId}`;
     const pc = makePC();
     const idx = this.peers.length;
@@ -156,7 +151,7 @@ export class FirebaseRoom {
 
     pc.onicecandidate = (e) => {
       if (e.candidate) {
-        m.push(m.ref(this._db, `${base}/hc`), e.candidate.toJSON()).catch(() => {});
+        db.ref(`${base}/hc`).push(e.candidate.toJSON()).catch(() => {});
       }
     };
     pc.onconnectionstatechange = () => {
@@ -173,10 +168,10 @@ export class FirebaseRoom {
     await pc.setRemoteDescription(new RTCSessionDescription(offer));
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
-    await m.set(m.ref(this._db, `${base}/answer`), { type: answer.type, sdp: answer.sdp });
+    await db.ref(`${base}/answer`).set({ type: answer.type, sdp: answer.sdp });
 
     // Listen for guest ICE candidates.
-    const gcRef = m.ref(this._db, `${base}/gc`);
+    const gcRef = db.ref(`${base}/gc`);
     const seen = new Set();
     this._track(gcRef, (snap) => {
       if (!snap.exists()) return;
@@ -195,22 +190,24 @@ export class FirebaseRoom {
     this.isHost = false;
     const clean = String(code || '').trim().toUpperCase();
     if (!/^[A-Z2-9]{4,8}$/.test(clean)) throw new Error('bad code');
-    this._db = await getDb();
-    const m = dbMod(this._db);
+    const db = getDb();
+    this._db = db;
 
     let lastErr = null;
     for (let attempt = 1; attempt <= 2; attempt++) {
       const token = Symbol('join');
       this._joinToken = token;
+      let pc = null;
+      let guestId = null;
       try {
         if (attempt > 1 && onRetry) onRetry(attempt);
         // Room must exist.
-        const roomSnap = await m.get(m.ref(this._db, `${ROOMS_PATH}/${clean}`));
+        const roomSnap = await db.ref(`${ROOMS_PATH}/${clean}`).once('value');
         if (!roomSnap.exists()) throw new Error('room-not-found');
 
-        const guestId = genId();
+        guestId = genId();
         const base = `${ROOMS_PATH}/${clean}/handshakes/${guestId}`;
-        const pc = makePC();
+        pc = makePC();
         const dc = pc.createDataChannel('game');
         const peer = { pc, dc, guestId };
         this.peers = [peer];
@@ -240,35 +237,35 @@ export class FirebaseRoom {
 
         pc.onicecandidate = (e) => {
           if (e.candidate && this._joinToken === token) {
-            m.push(m.ref(this._db, `${base}/gc`), e.candidate.toJSON()).catch(() => {});
+            db.ref(`${base}/gc`).push(e.candidate.toJSON()).catch(() => {});
           }
         };
 
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
-        await m.set(m.ref(this._db, `${base}/offer`), { type: offer.type, sdp: offer.sdp });
+        await db.ref(`${base}/offer`).set({ type: offer.type, sdp: offer.sdp });
 
         // Wait for host's answer.
-        const answerRef = m.ref(this._db, `${base}/answer`);
+        const answerRef = db.ref(`${base}/answer`);
         const answerPromise = new Promise((resolve, reject) => {
           const timer = setTimeout(() => reject(new Error('connect-timeout')), JOIN_TIMEOUT_MS);
           const cb = async (snap) => {
             if (!snap.exists()) return;
             if (this._joinToken !== token) return;
             clearTimeout(timer);
-            m.off(answerRef, 'value', cb);
+            answerRef.off('value', cb);
             try {
               const a = snap.val();
               await pc.setRemoteDescription(new RTCSessionDescription(a));
               resolve();
             } catch (e) { reject(e); }
           };
-          m.onValue(answerRef, cb);
+          answerRef.on('value', cb);
           this._dbRefs.push({ ref: answerRef, cb });
         });
 
         // Listen for host ICE candidates.
-        const hcRef = m.ref(this._db, `${base}/hc`);
+        const hcRef = db.ref(`${base}/hc`);
         const seen = new Set();
         const hcCb = (snap) => {
           if (!snap.exists() || this._joinToken !== token) return;
@@ -278,7 +275,7 @@ export class FirebaseRoom {
             pc.addIceCandidate(new RTCIceCandidate(c.val())).catch(() => {});
           });
         };
-        m.onValue(hcRef, hcCb);
+        hcRef.on('value', hcCb);
         this._dbRefs.push({ ref: hcRef, cb: hcCb });
 
         await answerPromise;
@@ -296,9 +293,8 @@ export class FirebaseRoom {
         lastErr = e;
         // Clean up this attempt's handshake node.
         try {
-          const p = this.peers[0];
-          if (p && p.guestId) await m.remove(m.ref(this._db, `${ROOMS_PATH}/${clean}/handshakes/${p.guestId}`));
-          if (p && p.pc) p.pc.close();
+          if (guestId) await db.ref(`${ROOMS_PATH}/${clean}/handshakes/${guestId}`).remove();
+          if (pc) pc.close();
         } catch {}
         this.peers = [];
         await new Promise((r) => setTimeout(r, 800));
@@ -315,7 +311,7 @@ export class FirebaseRoom {
     this.peers = [];
   }
 
-  // ---------- messaging (same as PeerRoom) ----------
+  // ---------- messaging ----------
 
   _dc(i) {
     const p = this.peers[i];
@@ -342,10 +338,9 @@ export class FirebaseRoom {
     for (const p of this.peers) { try { p.pc && p.pc.close(); } catch {} }
     this.peers = [];
     // Host removes the room so codes don't linger.
-    if (this.isHost && this.code && this._db) {
+    if (this.isHost && this.code && this._db && this._db !== _mockDb) {
       try {
-        const m = dbMod(this._db);
-        await m.remove(m.ref(this._db, `${ROOMS_PATH}/${this.code}`));
+        await this._db.ref(`${ROOMS_PATH}/${this.code}`).remove();
       } catch {}
     }
     this.code = null;
