@@ -16,7 +16,7 @@
 //       toHost/{pushId}: { from: guestId, data: msgString }
 //       toGuest/{guestId}/{pushId}: { data: msgString }
 
-import { parseMsg } from './protocol.js?v=1791448307';
+import { parseMsg } from './protocol.js?v=1791449037';
 
 const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // no confusing 0/O/1/I
 const ROOMS_PATH = 'pkmspl-rooms';
@@ -182,15 +182,22 @@ export class FirebaseRoom {
     snap.forEach((child) => {
       const key = child.key;
       if (this._seenMsgs.has(key)) return;
-      this._seenMsgs.add(key);
       const m = child.val() || {};
-      const idx = this.peers.findIndex((p) => p.guestId === m.from);
+      let idx = this.peers.findIndex((p) => p.guestId === m.from);
+      // Guest may send HELLO before we processed their guests/ entry.
+      // Register them on the fly so the message isn't lost.
+      if (idx < 0 && m.from) {
+        idx = this.peers.length;
+        this.peers.push({ guestId: m.from, name: '?' });
+        if (!this.closed) this.onjoin(idx);
+      }
       if (idx >= 0) {
+        this._seenMsgs.add(key);
         const parsed = parseMsg(typeof m.data === 'string' ? m.data : '');
         if (parsed) this.onmessage(idx, parsed);
       }
-      // Clean up delivered message.
-      child.ref.remove().catch(() => {});
+      // Clean up delivered message (only if we handled it).
+      if (idx >= 0) child.ref.remove().catch(() => {});
     });
   }
 
