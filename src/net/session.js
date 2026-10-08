@@ -1,13 +1,14 @@
 // Multiplayer session: owns the NetRoom, the lockstep protocol flow, and the
 // multiplayer controller. main.js only renders `session` state and forwards taps.
 
-import { CARDS } from '../data/cards.js?v=1791458692';
-import { createController } from '../ui/controller.js?v=1791458692';
-import { NetRoom } from './webrtc.js?v=1791458692';
-import { FirebaseRoom } from './fireroom.js?v=1791458692';
-import { MSG, makeMsg, stateHash } from './protocol.js?v=1791458692';
+import { CARDS } from '../data/cards.js?v=1791467093';
+import { createController } from '../ui/controller.js?v=1791467093';
+import { NetRoom } from './webrtc.js?v=1791467093';
+import { FirebaseRoom } from './fireroom.js?v=1791467093';
+import { MSG, makeMsg, stateHash } from './protocol.js?v=1791467093';
 
 const MAX_PLAYERS = 4;
+const TURN_LIMIT_MS = 90 * 1000; // 90 seconds per turn
 
 export class NetSession {
   // cb: { onRender(), onGameStart(ctrl), onGameEnd(), onNotice(msg) }
@@ -28,6 +29,8 @@ export class NetSession {
     this.seed = 0;
     this.offerCode = '';
     this.answerCode = '';
+    this.turnDeadline = 0; // timestamp when current turn expires
+    this._turnTimer = null;
     this.shortCode = ''; // peer mode: 6-char room code
     this.lastCode = ''; // peer mode: code used to join (for rejoin lookup)
     this.pendingPeer = -1;
@@ -335,20 +338,81 @@ export class NetSession {
     const ctrl = createController({ cards: CARDS, seed, mp: { names, me: myIndex, aiNames }, hooks: {}, difficulty: 'hard' });
     const raw = ctrl.dispatch.bind(ctrl);
     const self = this;
+    // Expose turn timer to UI via mp object.
+    ctrl.mp.getTurnRemaining = () => self.getTurnRemaining();
     ctrl.dispatch = (action) => {
       const actor = ctrl.game.current;
       const res = raw(action);
-      if (res.ok) self.sendAction(action, actor);
+      if (res.ok) {
+        self.sendAction(action, actor);
+        self.resetTurnTimer();
+      }
       return res;
     };
-    ctrl.applyRemote = (action) => raw(action);
+    ctrl.applyRemote = (action) => {
+      const res = raw(action);
+      if (res.ok) self.resetTurnTimer();
+      return res;
+    };
     this.ctrl = ctrl;
     this.seed = seed;
     this.names = names;
     this.aiNames = aiNames;
     this.myIndex = myIndex;
     this.phase = 'playing';
+    this.resetTurnTimer();
+    this.startTurnTimer();
     this.cb.onGameStart(ctrl);
+  }
+
+  /** Reset the 90s turn timer. Called on game start and after each action. */
+  resetTurnTimer() {
+    this.turnDeadline = Date.now() + TURN_LIMIT_MS;
+  }
+
+  /** Get remaining seconds for current turn. */
+  getTurnRemaining() {
+    if (this.phase !== 'playing' || !this.turnDeadline) return 0;
+    return Math.max(0, Math.ceil((this.turnDeadline - Date.now()) / 1000));
+  }
+
+  /** Host: start the timer that enforces turn timeouts. */
+  startTurnTimer() {
+    this.stopTurnTimer();
+    if (this.role !== 'host') return;
+    this._turnTimer = setInterval(() => {
+      if (this.phase !== 'playing' || !this.ctrl) return;
+      if (Date.now() >= this.turnDeadline) {
+        // Time's up! Force a pass for the current player.
+        const current = this.ctrl.game.current;
+        // Only auto-pass if it's a human's turn (AI acts on its own).
+        const isAI = this.aiNames && this.aiNames[current];
+        if (!isAI) {
+          const passAction = { type: 'pass' };
+          const res = this.ctrl.applyRemote(passAction);
+          if (res.ok) {
+            this.room.broadcast(makeMsg(MSG.ACTION, {
+              from: current,
+              action: passAction,
+              h: stateHash(this.ctrl.game),
+              timeout: true,
+            }));
+            this.cb.onNotice(`⏰ ${this.names[current]}의 시간이 초과돼 자동으로 넘겼어요.`);
+            this.cb.onRender();
+          }
+        }
+        this.resetTurnTimer();
+      }
+    }, 1000);
+    // Don't keep Node.js process alive in tests.
+    if (this._turnTimer.unref) this._turnTimer.unref();
+  }
+
+  stopTurnTimer() {
+    if (this._turnTimer) {
+      clearInterval(this._turnTimer);
+      this._turnTimer = null;
+    }
   }
 
   sendAction(action, fromIdx) {
@@ -403,6 +467,7 @@ export class NetSession {
   }
 
   end() {
+    this.stopTurnTimer();
     for (const k of Object.keys(this.dropped || {})) {
       try { clearInterval(this.dropped[k].timer); } catch {}
     }

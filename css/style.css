@@ -469,3 +469,11 @@ button.orsv:hover { border-color: #4ade80; }
 .roomitem:active { background: #3a3a55; }
 .roomtitle { font-weight: bold; font-size: 15px; margin-bottom: 4px; }
 .roommeta { font-size: 13px; color: #a0a0c0; }
+
+.turntimer {
+  font-size: 14px; font-weight: bold; color: #fbbf24;
+  background: #2a2a45; border: 2px solid #1a1a2e; border-radius: 6px;
+  padding: 4px 10px; margin-top: 4px; display: inline-block;
+}
+.turntimer.urgent { color: #ff4444; animation: blink 1s infinite; }
+@keyframes blink { 50% { opacity: 0.5; } }

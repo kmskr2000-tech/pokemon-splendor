@@ -41,17 +41,17 @@ function showInAppGuide() {
 }
 showInAppGuide();
 
-import { CARDS } from '../data/cards.js?v=1791458692';
-import { ACHIEVEMENTS, checkAchievements } from '../data/achievements.js?v=1791458692';
-import { CHALLENGES, challengeWon } from '../data/challenges.js?v=1791458692';
-import { createController } from './controller.js?v=1791458692';
-import * as V from './view.js?v=1791458692';
-import { NetSession } from '../net/session.js?v=1791458692';
-import { listRooms, watchRooms } from '../net/fireroom.js?v=1791458692';
-import { getBonuses, getPoints, bonusList } from '../core/engine.js?v=1791458692';
-import { startBGM, stopBGM, unlockAudio } from '../audio/bgm.js?v=1791458692';
-import { sfx, setSFXEnabled } from '../audio/sfx.js?v=1791458692';
-import { browserStorage, loadDex, loadSave, saveGame, clearSave, recordCatch, recordGame, loadOptions, saveOptions, loadAchv, unlockAchv, loadRecords, recordResult, victoryScore, loadChal, completeChal } from '../storage/store.js?v=1791458692';
+import { CARDS } from '../data/cards.js?v=1791467093';
+import { ACHIEVEMENTS, checkAchievements } from '../data/achievements.js?v=1791467093';
+import { CHALLENGES, challengeWon } from '../data/challenges.js?v=1791467093';
+import { createController } from './controller.js?v=1791467093';
+import * as V from './view.js?v=1791467093';
+import { NetSession } from '../net/session.js?v=1791467093';
+import { listRooms, watchRooms } from '../net/fireroom.js?v=1791467093';
+import { getBonuses, getPoints, bonusList } from '../core/engine.js?v=1791467093';
+import { startBGM, stopBGM, unlockAudio } from '../audio/bgm.js?v=1791467093';
+import { sfx, setSFXEnabled } from '../audio/sfx.js?v=1791467093';
+import { browserStorage, loadDex, loadSave, saveGame, clearSave, recordCatch, recordGame, loadOptions, saveOptions, loadAchv, unlockAchv, loadRecords, recordResult, victoryScore, loadChal, completeChal } from '../storage/store.js?v=1791467093';
 
 const params = new URLSearchParams(location.search);
 const AI_DELAY = params.has('fast') ? 0 : 1600; // ?fast=1 skips the pacing delay (tests)
@@ -349,9 +349,10 @@ function openNet() {
       ctrl = c;
       Object.keys(cache).forEach((k) => delete cache[k]);
       window.__ctrl = ctrl; // debugging / automated tests
+      startTimerUpdater();
       render();
     },
-    onGameEnd: () => { stopLobbyWatch(); net = null; ctrl = null; render(); },
+    onGameEnd: () => { stopLobbyWatch(); stopTimerUpdater(); net = null; ctrl = null; render(); },
     onNotice: (msg) => { netNotice = msg; render(); },
   });
   net.myName = options.playerName || ''; // pre-fill saved name
@@ -383,6 +384,26 @@ function refreshLobby() {
 
 function stopLobbyWatch() {
   if (_lobbyUnwatch) { try { _lobbyUnwatch(); } catch {} _lobbyUnwatch = null; }
+}
+
+let _timerUpdater = null;
+
+/** Update the turn timer display every second during multiplayer games. */
+function startTimerUpdater() {
+  stopTimerUpdater();
+  _timerUpdater = setInterval(() => {
+    if (!net || !ctrl || !ctrl.mp) return;
+    const el = document.getElementById('turntimer');
+    if (!el) return;
+    const remaining = net.getTurnRemaining();
+    el.textContent = `⏱ ${remaining}초`;
+    el.classList.toggle('urgent', remaining <= 10 && remaining > 0);
+  }, 1000);
+  if (_timerUpdater.unref) _timerUpdater.unref();
+}
+
+function stopTimerUpdater() {
+  if (_timerUpdater) { clearInterval(_timerUpdater); _timerUpdater = null; }
 }
 
 function savePlayerName(name) {

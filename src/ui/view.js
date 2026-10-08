@@ -1,12 +1,12 @@
 // Pure HTML-string renderers. Each takes the controller and returns markup; main.js owns the DOM.
 // All text interpolated here comes from our own card data / constants (no user input).
 
-import { COLORS, MASTER, PHASES, TOKEN_KEYS } from '../core/constants.js?v=1791458692';
-import { getBonuses, getPoints, tokenCount, bonusList, isSpecial } from '../core/engine.js?v=1791458692';
-import { BALLS, TRAINERS, evoText } from './controller.js?v=1791458692';
-import { dexSummary } from '../storage/store.js?v=1791458692';
-import { ACHIEVEMENTS } from '../data/achievements.js?v=1791458692';
-import { CHALLENGES, challengeProgress } from '../data/challenges.js?v=1791458692';
+import { COLORS, MASTER, PHASES, TOKEN_KEYS } from '../core/constants.js?v=1791467093';
+import { getBonuses, getPoints, tokenCount, bonusList, isSpecial } from '../core/engine.js?v=1791467093';
+import { BALLS, TRAINERS, evoText } from './controller.js?v=1791467093';
+import { dexSummary } from '../storage/store.js?v=1791467093';
+import { ACHIEVEMENTS } from '../data/achievements.js?v=1791467093';
+import { CHALLENGES, challengeProgress } from '../data/challenges.js?v=1791467093';
 
 const diffLabel = { easy: '쉬움', normal: '보통', hard: '어려움' };
 
@@ -90,12 +90,20 @@ export function headerHTML(ctrl) {
   else badge = `${ctrl.current.name} 차례`;
   const last = ctrl.lastRound ? `<div class="lastround">마지막 라운드! ${s.players[s.endTriggeredBy].name}이(가) 18점 달성</div>` : '';
   const netbadge = ctrl.mp ? `<div class="netbadge">📡 대전 ${ctrl.mp.names.length}인</div>` : '';
+  // Turn timer for multiplayer (90s limit).
+  let timerHtml = '';
+  if (ctrl.mp && typeof ctrl.mp.getTurnRemaining === 'function' && !ctrl.finished) {
+    const remaining = ctrl.mp.getTurnRemaining();
+    const urgent = remaining <= 10 ? ' urgent' : '';
+    timerHtml = `<div class="turntimer${urgent}" id="turntimer">⏱ ${remaining}초</div>`;
+  }
   return `<div class="header">
       <div class="title">포켓몬 스플렌더<small>POKEMON SPLENDOR · DOT EDITION</small></div>
       <button class="rulesbtn" data-action="rules">룰 설명</button>
       <button class="rulesbtn opt" data-action="options" aria-label="설정">⚙</button>
       ${netbadge}
       <div class="turn ${ctrl.isHumanTurn ? 'mine' : ''}">${badge}</div>
+      ${timerHtml}
     </div>${last}`;
 }
 
