@@ -3,7 +3,7 @@
 // Guests only ever talk to the host; the host relays game actions.
 // Signaling is manual: offer/answer codes are copy-pasted by the players.
 
-import { encodeSignal, decodeSignal, parseMsg } from './protocol.js?v=1791453840';
+import { encodeSignal, decodeSignal, parseMsg } from './protocol.js?v=1791458692';
 
 const ICE = [{ urls: 'stun:stun.l.google.com:19302' }];
 const ICE_TIMEOUT_MS = 4000;

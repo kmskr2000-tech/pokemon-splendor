@@ -41,17 +41,17 @@ function showInAppGuide() {
 }
 showInAppGuide();
 
-import { CARDS } from '../data/cards.js?v=1791453840';
-import { ACHIEVEMENTS, checkAchievements } from '../data/achievements.js?v=1791453840';
-import { CHALLENGES, challengeWon } from '../data/challenges.js?v=1791453840';
-import { createController } from './controller.js?v=1791453840';
-import * as V from './view.js?v=1791453840';
-import { NetSession } from '../net/session.js?v=1791453840';
-import { listRooms, watchRooms } from '../net/fireroom.js?v=1791453840';
-import { getBonuses, getPoints, bonusList } from '../core/engine.js?v=1791453840';
-import { startBGM, stopBGM, unlockAudio } from '../audio/bgm.js?v=1791453840';
-import { sfx, setSFXEnabled } from '../audio/sfx.js?v=1791453840';
-import { browserStorage, loadDex, loadSave, saveGame, clearSave, recordCatch, recordGame, loadOptions, saveOptions, loadAchv, unlockAchv, loadRecords, recordResult, victoryScore, loadChal, completeChal } from '../storage/store.js?v=1791453840';
+import { CARDS } from '../data/cards.js?v=1791458692';
+import { ACHIEVEMENTS, checkAchievements } from '../data/achievements.js?v=1791458692';
+import { CHALLENGES, challengeWon } from '../data/challenges.js?v=1791458692';
+import { createController } from './controller.js?v=1791458692';
+import * as V from './view.js?v=1791458692';
+import { NetSession } from '../net/session.js?v=1791458692';
+import { listRooms, watchRooms } from '../net/fireroom.js?v=1791458692';
+import { getBonuses, getPoints, bonusList } from '../core/engine.js?v=1791458692';
+import { startBGM, stopBGM, unlockAudio } from '../audio/bgm.js?v=1791458692';
+import { sfx, setSFXEnabled } from '../audio/sfx.js?v=1791458692';
+import { browserStorage, loadDex, loadSave, saveGame, clearSave, recordCatch, recordGame, loadOptions, saveOptions, loadAchv, unlockAchv, loadRecords, recordResult, victoryScore, loadChal, completeChal } from '../storage/store.js?v=1791458692';
 
 const params = new URLSearchParams(location.search);
 const AI_DELAY = params.has('fast') ? 0 : 1600; // ?fast=1 skips the pacing delay (tests)

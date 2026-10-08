@@ -16,7 +16,7 @@
 //       toHost/{pushId}: { from: guestId, data: msgString }
 //       toGuest/{guestId}/{pushId}: { data: msgString }
 
-import { parseMsg } from './protocol.js?v=1791453840';
+import { parseMsg } from './protocol.js?v=1791458692';
 
 const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // no confusing 0/O/1/I
 const ROOMS_PATH = 'pkmspl-rooms';
@@ -240,8 +240,12 @@ export class FirebaseRoom {
         // Listen for messages from host.
         const inboxRef = db.ref(`${ROOMS_PATH}/${clean}/msgs/toGuest/${guestId}`);
         const seen = new Set();
+        const joinToken = token; // capture for closure
         const cb = (snap) => {
-          if (!snap.exists() || this._joinToken !== token) return;
+          // Skip if join was cancelled (token changed to a different symbol).
+          // After successful join, _joinToken is null, which is fine.
+          if (!snap.exists() || this.closed) return;
+          if (this._joinToken !== null && this._joinToken !== joinToken) return;
           snap.forEach((child) => {
             if (seen.has(child.key)) return;
             seen.add(child.key);
@@ -258,7 +262,8 @@ export class FirebaseRoom {
         // the room's startInfo will trigger beginGame via onmessage.
         const roomRef = db.ref(`${ROOMS_PATH}/${clean}`);
         const startCb = (snap) => {
-          if (!snap.exists() || this._joinToken !== token) return;
+          if (!snap.exists() || this.closed) return;
+          if (this._joinToken !== null && this._joinToken !== joinToken) return;
           const r = snap.val() || {};
           if (r.started && r.startInfo && !this._startFallbackDone) {
             this._startFallbackDone = true;
