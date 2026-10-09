@@ -16,7 +16,7 @@
 //       toHost/{pushId}: { from: guestId, data: msgString }
 //       toGuest/{guestId}/{pushId}: { data: msgString }
 
-import { parseMsg } from './protocol.js?v=1791520951';
+import { parseMsg } from './protocol.js?v=1791552480';
 
 const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // no confusing 0/O/1/I
 const ROOMS_PATH = 'pkmspl-rooms';
@@ -77,6 +77,7 @@ export async function listRooms() {
       hostName: r.hostName || '?',
       playerCount: 1 + guests, // host + guests
       created: r.created || 0,
+      turnLimitMs: r.turnLimitMs || 45000,
     });
   });
   // Newest first.
@@ -105,6 +106,7 @@ export function watchRooms(cb) {
           hostName: r.hostName || '?',
           playerCount: 1 + guests,
           created: r.created || 0,
+          turnLimitMs: r.turnLimitMs || 45000,
         });
       });
       rooms.sort((a, b) => b.created - a.created);
@@ -145,8 +147,9 @@ export class FirebaseRoom {
   // ---------- host ----------
 
   /** Host: create a room, return the 6-char code. */
-  async hostCreate(hostName = '', title = '') {
+  async hostCreate(hostName = '', title = '', turnLimitMs = 45000) {
     this.isHost = true;
+    this.turnLimitMs = turnLimitMs;
     const db = getDb();
     this._db = db;
     for (let i = 0; i < 4; i++) {
@@ -158,6 +161,7 @@ export class FirebaseRoom {
         created: Date.now(),
         title: title || `${hostName}의 방`,
         hostName: hostName || '?',
+        turnLimitMs,
       });
       this.code = code;
       // Listen for new guests.
@@ -225,6 +229,8 @@ export class FirebaseRoom {
         if (attempt > 1 && onRetry) onRetry(attempt);
         const roomSnap = await db.ref(`${ROOMS_PATH}/${clean}`).once('value');
         if (!roomSnap.exists()) throw new Error('room-not-found');
+        const roomData = roomSnap.val() || {};
+        this.turnLimitMs = roomData.turnLimitMs || 45000;
 
         const guestId = genId();
         this.myGuestId = guestId;
@@ -269,7 +275,7 @@ export class FirebaseRoom {
             this._startFallbackDone = true;
             const si = r.startInfo;
             // Simulate receiving START message.
-            this.onmessage(0, { t: 'start', seed: si.seed, names: si.names, aiNames: si.aiNames || [] });
+            this.onmessage(0, { t: 'start', seed: si.seed, names: si.names, aiNames: si.aiNames || [], turnLimitMs: si.turnLimitMs });
           }
         };
         roomRef.on('value', startCb);

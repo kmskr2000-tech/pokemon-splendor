@@ -1,14 +1,14 @@
 // Multiplayer session: owns the NetRoom, the lockstep protocol flow, and the
 // multiplayer controller. main.js only renders `session` state and forwards taps.
 
-import { CARDS } from '../data/cards.js?v=1791520951';
-import { createController } from '../ui/controller.js?v=1791520951';
-import { NetRoom } from './webrtc.js?v=1791520951';
-import { FirebaseRoom } from './fireroom.js?v=1791520951';
-import { MSG, makeMsg, stateHash } from './protocol.js?v=1791520951';
+import { CARDS } from '../data/cards.js?v=1791552480';
+import { createController } from '../ui/controller.js?v=1791552480';
+import { NetRoom } from './webrtc.js?v=1791552480';
+import { FirebaseRoom } from './fireroom.js?v=1791552480';
+import { MSG, makeMsg, stateHash } from './protocol.js?v=1791552480';
 
 const MAX_PLAYERS = 4;
-const TURN_LIMIT_MS = 45 * 1000; // 45 seconds per turn
+const DEFAULT_TURN_LIMIT_MS = 45 * 1000; // 45 seconds per turn
 
 export class NetSession {
   // cb: { onRender(), onGameStart(ctrl), onGameEnd(), onNotice(msg) }
@@ -30,6 +30,7 @@ export class NetSession {
     this.offerCode = '';
     this.answerCode = '';
     this.turnDeadline = 0; // timestamp when current turn expires
+    this.turnLimitMs = DEFAULT_TURN_LIMIT_MS; // per-room setting chosen by host
     this._turnTimer = null;
     this.shortCode = ''; // peer mode: 6-char room code
     this.lastCode = ''; // peer mode: code used to join (for rejoin lookup)
@@ -85,9 +86,10 @@ export class NetSession {
 
   // ---------- host ----------
 
-  async hostCreate(name, title = '') {
+  async hostCreate(name, title = '', turnLimitMs = DEFAULT_TURN_LIMIT_MS) {
     this.role = 'host';
     this.myName = this.cleanName(name);
+    this.turnLimitMs = turnLimitMs;
     this.names = [this.myName];
     this.myIndex = 0;
     this.room = this.makeRoom();
@@ -97,7 +99,7 @@ export class NetSession {
     this.cb.onRender();
     try {
       if (this.usePeer) {
-        this.shortCode = await this.room.hostCreate(this.myName, title);
+        this.shortCode = await this.room.hostCreate(this.myName, title, this.turnLimitMs);
         this.phase = 'hostlobby';
       } else {
         const { peerIdx, code } = await this.room.createOffer();
@@ -167,11 +169,11 @@ export class NetSession {
     const seed = (crypto.getRandomValues(new Uint32Array(1))[0] || 1);
     this.aiNames = this.pickAiNames();
     this.beginGame(seed, [...this.names], 0, this.aiNames);
-    this.room.broadcast(makeMsg(MSG.START, { seed, names: this.names, aiNames: this.aiNames }));
+    this.room.broadcast(makeMsg(MSG.START, { seed, names: this.names, aiNames: this.aiNames, turnLimitMs: this.turnLimitMs }));
     // Mark room as started so it disappears from lobby. Also write start info
     // as a fallback in case the broadcast message is missed.
     if (this.room && typeof this.room.markStarted === 'function') {
-      this.room.markStarted({ seed, names: this.names, aiNames: this.aiNames }).catch(() => {});
+      this.room.markStarted({ seed, names: this.names, aiNames: this.aiNames, turnLimitMs: this.turnLimitMs }).catch(() => {});
     }
   }
 
@@ -248,6 +250,8 @@ export class NetSession {
         if (typeof this.room.setGuestName === 'function') {
           this.room.setGuestName(this.myName).catch(() => {});
         }
+        // Pick up the host's per-room turn time limit.
+        if (this.room.turnLimitMs) this.turnLimitMs = this.room.turnLimitMs;
         // onjoin -> hello (+rejoin) -> welcome/roster -> guestlobby
       } else {
         this.answerCode = await this.room.join(String(code || '').trim());
@@ -298,6 +302,7 @@ export class NetSession {
         this.cb.onRender();
         break;
       case MSG.START:
+        if (m.turnLimitMs) this.turnLimitMs = m.turnLimitMs;
         this.beginGame(m.seed, m.names, this.myIndex, m.aiNames || []);
         break;
       case MSG.ACTION: {
@@ -367,7 +372,7 @@ export class NetSession {
 
   /** Reset the 90s turn timer. Called on game start and after each action. */
   resetTurnTimer() {
-    this.turnDeadline = Date.now() + TURN_LIMIT_MS;
+    this.turnDeadline = Date.now() + this.turnLimitMs;
   }
 
   /** Get remaining seconds for current turn. */

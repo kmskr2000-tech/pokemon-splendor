@@ -41,17 +41,17 @@ function showInAppGuide() {
 }
 showInAppGuide();
 
-import { CARDS } from '../data/cards.js?v=1791520951';
-import { ACHIEVEMENTS, checkAchievements } from '../data/achievements.js?v=1791520951';
-import { CHALLENGES, challengeWon } from '../data/challenges.js?v=1791520951';
-import { createController } from './controller.js?v=1791520951';
-import * as V from './view.js?v=1791520951';
-import { NetSession } from '../net/session.js?v=1791520951';
-import { listRooms, watchRooms } from '../net/fireroom.js?v=1791520951';
-import { getBonuses, getPoints, bonusList } from '../core/engine.js?v=1791520951';
-import { startBGM, stopBGM, unlockAudio } from '../audio/bgm.js?v=1791520951';
-import { sfx, setSFXEnabled } from '../audio/sfx.js?v=1791520951';
-import { browserStorage, loadDex, loadSave, saveGame, clearSave, recordCatch, recordGame, loadOptions, saveOptions, loadAchv, unlockAchv, loadRecords, recordResult, victoryScore, loadChal, completeChal } from '../storage/store.js?v=1791520951';
+import { CARDS } from '../data/cards.js?v=1791552480';
+import { ACHIEVEMENTS, checkAchievements } from '../data/achievements.js?v=1791552480';
+import { CHALLENGES, challengeWon } from '../data/challenges.js?v=1791552480';
+import { createController } from './controller.js?v=1791552480';
+import * as V from './view.js?v=1791552480';
+import { NetSession } from '../net/session.js?v=1791552480';
+import { listRooms, watchRooms } from '../net/fireroom.js?v=1791552480';
+import { getBonuses, getPoints, bonusList } from '../core/engine.js?v=1791552480';
+import { startBGM, stopBGM, unlockAudio } from '../audio/bgm.js?v=1791552480';
+import { sfx, setSFXEnabled } from '../audio/sfx.js?v=1791552480';
+import { browserStorage, loadDex, loadSave, saveGame, clearSave, recordCatch, recordGame, loadOptions, saveOptions, loadAchv, unlockAchv, loadRecords, recordResult, victoryScore, loadChal, completeChal } from '../storage/store.js?v=1791552480';
 
 const params = new URLSearchParams(location.search);
 const AI_DELAY = params.has('fast') ? 0 : 1600; // ?fast=1 skips the pacing delay (tests)
@@ -505,12 +505,19 @@ document.addEventListener('click', (e) => {
     } break;
     case 'net-help': netHelpOpen = true; break;
     case 'net-help-close': netHelpOpen = false; break;
+    case 'net-timelimit': if (net) {
+      const ms = Number(d.ms);
+      net.pendingTurnLimit = (ms === 20000) ? 20000 : 45000;
+      break;
+    }
     case 'net-host-create': if (net) {
       netNotice = '';
       const name = savePlayerName(netInputVal('netname'));
       const titleEl = document.getElementById('nettitle');
       const title = titleEl ? titleEl.value.trim().slice(0, 20) : '';
-      net.hostCreate(name, title);
+      const turnLimitMs = net.pendingTurnLimit || 45000;
+      net.pendingTurnLimit = null;
+      net.hostCreate(name, title, turnLimitMs);
       return;
     } break;
     case 'net-host-invite': if (net) { netNotice = ''; net.hostInvite(); return; } break;

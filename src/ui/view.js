@@ -1,12 +1,12 @@
 // Pure HTML-string renderers. Each takes the controller and returns markup; main.js owns the DOM.
 // All text interpolated here comes from our own card data / constants (no user input).
 
-import { COLORS, MASTER, PHASES, TOKEN_KEYS } from '../core/constants.js?v=1791520951';
-import { getBonuses, getPoints, tokenCount, bonusList, isSpecial } from '../core/engine.js?v=1791520951';
-import { BALLS, TRAINERS, evoText } from './controller.js?v=1791520951';
-import { dexSummary } from '../storage/store.js?v=1791520951';
-import { ACHIEVEMENTS } from '../data/achievements.js?v=1791520951';
-import { CHALLENGES, challengeProgress } from '../data/challenges.js?v=1791520951';
+import { COLORS, MASTER, PHASES, TOKEN_KEYS } from '../core/constants.js?v=1791552480';
+import { getBonuses, getPoints, tokenCount, bonusList, isSpecial } from '../core/engine.js?v=1791552480';
+import { BALLS, TRAINERS, evoText } from './controller.js?v=1791552480';
+import { dexSummary } from '../storage/store.js?v=1791552480';
+import { ACHIEVEMENTS } from '../data/achievements.js?v=1791552480';
+import { CHALLENGES, challengeProgress } from '../data/challenges.js?v=1791552480';
 
 const diffLabel = { easy: '쉬움', normal: '보통', hard: '어려움' };
 
@@ -648,7 +648,7 @@ export function netHTML(net, notice = '') {
         : rooms.map((r) => `
           <div class="roomitem" data-action="net-lobby-join" data-code="${esc(r.code)}">
             <div class="roomtitle">${esc(r.title)}</div>
-            <div class="roommeta">👑 ${esc(r.hostName)} · ${r.playerCount}/4명</div>
+            <div class="roommeta">👑 ${esc(r.hostName)} · ${r.playerCount}/4명 · ⏱ ${Math.round((r.turnLimitMs || 45000) / 1000)}초</div>
           </div>`).join('');
       body = `<p class="sheet-p">친구와 대전해요. 방을 골라 입장하세요. (2~4인)</p>
         <div class="roomlist">${roomHtml}</div>
@@ -659,13 +659,19 @@ export function netHTML(net, notice = '') {
         <div class="btnrow"><button class="btn ghost" data-action="net-leave">닫기</button></div>`;
       break;
     }
-    case 'hostname':
+    case 'hostname': {
+      const tl = net.pendingTurnLimit || 45000;
       body = `<p class="sheet-p">대전에서 쓸 이름과 방 제목을 입력하세요.<br><small>이름은 다음부터 자동 입력돼요.</small></p>
         <input id="netname" class="netinput" maxlength="12" placeholder="이름" value="${esc(net.myName)}">
         <input id="nettitle" class="netinput" maxlength="20" placeholder="방 제목 (예: 초보 환영)" value="">
+        <div class="airow"><span>⏱ 턴 시간제한</span><div class="aibtns">
+          <button class="aibtn ${tl === 20000 ? 'sel' : ''}" data-action="net-timelimit" data-ms="20000">20초</button>
+          <button class="aibtn ${tl === 45000 ? 'sel' : ''}" data-action="net-timelimit" data-ms="45000">45초</button>
+        </div></div>
         <div class="btnrow"><button class="btn primary" data-action="net-host-create">방 만들기</button>
         <button class="btn ghost" data-action="net-menu">뒤로</button></div>`;
       break;
+    }
     case 'busy':
       body = `<p class="sheet-p">연결 중이에요...</p>
         <div class="btnrow"><button class="btn ghost" data-action="net-cancel-join">취소</button></div>`;
@@ -691,6 +697,7 @@ export function netHTML(net, notice = '') {
         `<button class="aibtn ${net.aiCount === n ? 'sel' : ''}" data-action="net-ai" data-n="${n}">${n === 0 ? '없음' : n + '명'}</button>`).join('');
       const total = net.names.length + net.aiCount;
       body = `${codeHtml}<div class="roster">${roster}</div>
+        <p class="sheet-p">⏱ 턴 시간제한: ${Math.round((net.turnLimitMs || 45000) / 1000)}초</p>
         ${maxAi > 0 ? `<div class="airow"><span>🤖 남는 자리 AI로 채우기 <small>(어려움)</small></span><div class="aibtns">${aiBtns}</div></div>` : ''}
         <p class="sheet-p">${net.names.length}명${net.aiCount ? ` + AI ${net.aiCount}명` : ''} (총 ${total}인)</p>
         <div class="btnrow">

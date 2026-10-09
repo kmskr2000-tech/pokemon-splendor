@@ -5,8 +5,8 @@
 import {
   COLORS, MASTER, PHASES, MAX_HAND,
   createGame, applyAction, legalActions, computePayment, evolveOptions, getCurrentPlayer, tokenCount,
-} from '../core/index.js?v=1791520951';
-import { chooseAction } from '../ai/heuristic.js?v=1791520951';
+} from '../core/index.js?v=1791552480';
+import { chooseAction } from '../ai/heuristic.js?v=1791552480';
 
 export const BALLS = {
   monster: { file: 'poke-ball', name: '몬스터볼', short: '몬스터' },
