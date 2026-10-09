@@ -35,7 +35,10 @@ img { image-rendering: pixelated; }
 .header {
   background: #7c3aed; border-bottom: 4px solid var(--ink);
   padding: 10px 12px; display: flex; justify-content: space-between; align-items: center; gap: 8px;
+  flex-wrap: wrap;
 }
+.headbtns { display: flex; gap: 6px; align-items: center; }
+.turnwrap { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; max-width: 100%; }
 .title { font-size: 18px; color: #fff; text-shadow: 2px 2px 0 #2e1065; }
 .title small { display: block; font-size: 9px; color: #ddd6fe; text-shadow: none; margin-top: 4px; }
 .title.big { font-size: 24px; text-align: center; margin-bottom: 12px; }
@@ -473,7 +476,7 @@ button.orsv:hover { border-color: #4ade80; }
 .turntimer {
   font-size: 14px; font-weight: bold; color: #fbbf24;
   background: #2a2a45; border: 2px solid #1a1a2e; border-radius: 6px;
-  padding: 4px 10px; margin-top: 4px; display: inline-block;
+  padding: 4px 10px; display: inline-block; white-space: nowrap; flex-shrink: 0;
 }
 .turntimer.urgent { color: #ff4444; animation: blink 1s infinite; }
 @keyframes blink { 50% { opacity: 0.5; } }

@@ -1,12 +1,12 @@
 // Pure HTML-string renderers. Each takes the controller and returns markup; main.js owns the DOM.
 // All text interpolated here comes from our own card data / constants (no user input).
 
-import { COLORS, MASTER, PHASES, TOKEN_KEYS } from '../core/constants.js?v=1791476752';
-import { getBonuses, getPoints, tokenCount, bonusList, isSpecial } from '../core/engine.js?v=1791476752';
-import { BALLS, TRAINERS, evoText } from './controller.js?v=1791476752';
-import { dexSummary } from '../storage/store.js?v=1791476752';
-import { ACHIEVEMENTS } from '../data/achievements.js?v=1791476752';
-import { CHALLENGES, challengeProgress } from '../data/challenges.js?v=1791476752';
+import { COLORS, MASTER, PHASES, TOKEN_KEYS } from '../core/constants.js?v=1791520951';
+import { getBonuses, getPoints, tokenCount, bonusList, isSpecial } from '../core/engine.js?v=1791520951';
+import { BALLS, TRAINERS, evoText } from './controller.js?v=1791520951';
+import { dexSummary } from '../storage/store.js?v=1791520951';
+import { ACHIEVEMENTS } from '../data/achievements.js?v=1791520951';
+import { CHALLENGES, challengeProgress } from '../data/challenges.js?v=1791520951';
 
 const diffLabel = { easy: '쉬움', normal: '보통', hard: '어려움' };
 
@@ -99,11 +99,15 @@ export function headerHTML(ctrl) {
   }
   return `<div class="header">
       <div class="title">포켓몬 스플렌더<small>POKEMON SPLENDOR · DOT EDITION</small></div>
-      <button class="rulesbtn" data-action="rules">룰 설명</button>
-      <button class="rulesbtn opt" data-action="options" aria-label="설정">⚙</button>
-      ${netbadge}
-      <div class="turn ${ctrl.isHumanTurn ? 'mine' : ''}">${badge}</div>
-      ${timerHtml}
+      <div class="headbtns">
+        <button class="rulesbtn" data-action="rules">룰 설명</button>
+        <button class="rulesbtn opt" data-action="options" aria-label="설정">⚙</button>
+      </div>
+      <div class="turnwrap">
+        ${netbadge}
+        <div class="turn ${ctrl.isHumanTurn ? 'mine' : ''}">${badge}</div>
+        ${timerHtml}
+      </div>
     </div>${last}`;
 }
 
