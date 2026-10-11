@@ -5,8 +5,8 @@ import {
   COLORS, MASTER, TOKEN_KEYS, MASTER_TOTAL, TOKENS_PER_COLOR, MAX_TOKENS, MAX_HAND,
   WIN_POINTS, TIER_KEYS, RESERVABLE_TIER_KEYS, TABLE_SLOTS, SPECIAL_TIER_KEYS, PHASES,
   RULE_CHOICES,
-} from './constants.js?v=1791552480';
-import { nextInt, shuffle } from './rng.js?v=1791552480';
+} from './constants.js?v=1791681230';
+import { nextInt, shuffle } from './rng.js?v=1791681230';
 
 const ok = (state, events) => ({ ok: true, state, events });
 const fail = (error) => ({ ok: false, error });
@@ -265,6 +265,7 @@ export function applyAction(state, action) {
     case 'reserve': error = doReserve(s, player, action, events); break;
     case 'buy': error = doBuy(s, player, action, events); break;
     case 'pass': error = doPass(state, s, events); break;
+    case 'timeout': error = doTimeout(s, events); break;
     case 'discard': error = doDiscard(s, player, action, events); break;
     case 'evolve': error = doEvolve(s, player, action, events); break;
     case 'skipEvolve': events.push({ type: 'skipEvolve', player: s.current }); endTurn(s, events); break;
@@ -380,6 +381,14 @@ function doPass(before, s, events) {
     s.stalled = true; // a full round of passes: nobody can ever act again
     finishGame(s, events);
   }
+  return null;
+}
+
+// Timeout: force-end the turn when the multiplayer turn timer expires.
+// Unlike pass, this is always legal — it just skips the player's turn.
+function doTimeout(s, events) {
+  events.push({ type: 'timeout', player: s.current });
+  endTurn(s, events);
   return null;
 }
 

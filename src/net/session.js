@@ -1,11 +1,11 @@
 // Multiplayer session: owns the NetRoom, the lockstep protocol flow, and the
 // multiplayer controller. main.js only renders `session` state and forwards taps.
 
-import { CARDS } from '../data/cards.js?v=1791552480';
-import { createController } from '../ui/controller.js?v=1791552480';
-import { NetRoom } from './webrtc.js?v=1791552480';
-import { FirebaseRoom } from './fireroom.js?v=1791552480';
-import { MSG, makeMsg, stateHash } from './protocol.js?v=1791552480';
+import { CARDS } from '../data/cards.js?v=1791681230';
+import { createController } from '../ui/controller.js?v=1791681230';
+import { NetRoom } from './webrtc.js?v=1791681230';
+import { FirebaseRoom } from './fireroom.js?v=1791681230';
+import { MSG, makeMsg, stateHash } from './protocol.js?v=1791681230';
 
 const MAX_PLAYERS = 4;
 const DEFAULT_TURN_LIMIT_MS = 45 * 1000; // 45 seconds per turn
@@ -393,12 +393,12 @@ export class NetSession {
         // Only auto-pass if it's a human's turn (AI acts on its own).
         const isAI = this.aiNames && this.aiNames[current];
         if (!isAI) {
-          const passAction = { type: 'pass' };
-          const res = this.ctrl.applyRemote(passAction);
+          const timeoutAction = { type: 'timeout' };
+          const res = this.ctrl.applyRemote(timeoutAction);
           if (res.ok) {
             this.room.broadcast(makeMsg(MSG.ACTION, {
               from: current,
-              action: passAction,
+              action: timeoutAction,
               h: stateHash(this.ctrl.game),
               timeout: true,
             }));
