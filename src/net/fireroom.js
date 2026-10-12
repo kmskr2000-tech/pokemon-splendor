@@ -16,10 +16,18 @@
 //       toHost/{pushId}: { from: guestId, data: msgString }
 //       toGuest/{guestId}/{pushId}: { data: msgString }
 
-import { parseMsg } from './protocol.js?v=1791808139';
+import { parseMsg } from './protocol.js?v=1791809713';
 
 const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // no confusing 0/O/1/I
 const ROOMS_PATH = 'pkmspl-rooms';
+
+// Presence: heartbeat every HB_INTERVAL_MS; a peer is considered gone when its
+// last heartbeat is older than HB_TIMEOUT_MS (host) / HOST_STALE_MS (guests
+// watching the host). onDisconnect handlers give fast detection on clean socket
+// loss; heartbeats cover the rest.
+const HB_INTERVAL_MS = 15000;
+const GUEST_TIMEOUT_MS = 35000;
+const HOST_STALE_MS = 45000;
 
 export function genCode(len = 6) {
   const buf = new Uint32Array(len);
@@ -118,18 +126,27 @@ export function watchRooms(cb) {
 }
 
 export class FirebaseRoom {
-  constructor({ onmessage = () => {}, onjoin = () => {}, onleave = () => {} } = {}) {
+  constructor({ onmessage = () => {}, onjoin = () => {}, onleave = () => {}, onhostback = () => {}, onroomdeleted = () => {}, onsuperseded = () => {} } = {}) {
     this.onmessage = onmessage;
     this.onjoin = onjoin;
     this.onleave = onleave;
+    this.onhostback = onhostback;       // guest: a new host took over after host-gone
+    this.onroomdeleted = onroomdeleted; // guest: room node deleted (host ended it)
+    this.onsuperseded = onsuperseded;   // host: another client claimed hostId (split-brain)
     this.isHost = false;
     this.closed = false;
-    this.peers = []; // host: [{guestId, name}], guest: [{guestId: 'host'}]
+    this.peers = []; // host: [{guestId, name, removed?}], guest: [{guestId: 'host'}]
     this.code = null;
     this.myGuestId = null;
     this._joinToken = null;
     this._dbRefs = [];
     this._seenMsgs = new Set();
+    this._guestHb = {}; // host: guestId -> last heartbeat timestamp
+    this._hostId = null;
+    this._hbTimer = null;
+    this._hostGoneFired = false;
+    this._sawHostGone = false;
+    this._roomGoneFired = false;
   }
 
   _track(ref, cb) {
@@ -164,6 +181,14 @@ export class FirebaseRoom {
         turnLimitMs,
       });
       this.code = code;
+      // Host presence: unique hostId + heartbeat. If this client disconnects,
+      // the server marks hostGone=hostId so a guest can take over.
+      this._hostId = genId();
+      await roomRef.update({ hostId: this._hostId, hostHb: Date.now(), hostGone: null });
+      try {
+        db.ref(`${ROOMS_PATH}/${code}/hostGone`).onDisconnect().set(this._hostId);
+      } catch {}
+      this._startHostHeartbeat();
       // Listen for new guests.
       const guestsRef = db.ref(`${ROOMS_PATH}/${code}/guests`);
       this._track(guestsRef, (s) => this._onGuests(s));
@@ -176,15 +201,81 @@ export class FirebaseRoom {
   }
 
   _onGuests(snap) {
-    if (this.closed || !snap.exists()) return;
-    snap.forEach((child) => {
-      const guestId = child.key;
-      const g = child.val() || {};
-      if (this.peers.some((p) => p.guestId === guestId)) return;
-      const idx = this.peers.length;
-      this.peers.push({ guestId, name: g.name || '?' });
-      if (!this.closed) this.onjoin(idx);
-    });
+    if (this.closed) return;
+    const seen = new Set();
+    if (snap.exists()) {
+      snap.forEach((child) => {
+        const guestId = child.key;
+        seen.add(guestId);
+        const g = child.val() || {};
+        this._guestHb[guestId] = g.hb || 0;
+        if (this.peers.some((p) => p.guestId === guestId && !p.removed)) return;
+        const idx = this.peers.length;
+        this.peers.push({ guestId, name: g.name || '?' });
+        if (!this.closed) this.onjoin(idx);
+      });
+    }
+    // Detect removed guests. Keep the slot (marked removed) so peer indices
+    // stay stable for the session's peerToPlayer mapping.
+    for (let i = 0; i < this.peers.length; i++) {
+      const p = this.peers[i];
+      if (!p.removed && !seen.has(p.guestId)) {
+        p.removed = true;
+        delete this._guestHb[p.guestId];
+        if (!this.closed) this.onleave(i);
+      }
+    }
+  }
+
+  /** Host heartbeat + guest staleness sweep + split-brain guard. */
+  _startHostHeartbeat() {
+    this._stopHeartbeat();
+    const db = this._db;
+    const code = this.code;
+    if (!db || !code) return;
+    this._hbTimer = setInterval(async () => {
+      if (this.closed || !this.isHost) return;
+      try {
+        // Split-brain guard: if another client claimed hostId, step down.
+        const idSnap = await db.ref(`${ROOMS_PATH}/${code}/hostId`).once('value');
+        if (idSnap.val() !== this._hostId) {
+          this._stopHeartbeat();
+          try { this.onsuperseded(); } catch {}
+          return;
+        }
+        // Sweep stale guests (heartbeat backup for missed onDisconnect).
+        const now = Date.now();
+        for (let i = 0; i < this.peers.length; i++) {
+          const p = this.peers[i];
+          if (p.removed) continue;
+          const hb = this._guestHb[p.guestId] || 0;
+          if (hb && now - hb > GUEST_TIMEOUT_MS) {
+            p.removed = true;
+            delete this._guestHb[p.guestId];
+            try { this.onleave(i); } catch {}
+          }
+        }
+        await db.ref(`${ROOMS_PATH}/${code}/hostHb`).set(now);
+      } catch {}
+    }, HB_INTERVAL_MS);
+    if (this._hbTimer.unref) this._hbTimer.unref();
+  }
+
+  _stopHeartbeat() {
+    if (this._hbTimer) {
+      clearInterval(this._hbTimer);
+      this._hbTimer = null;
+    }
+  }
+
+  /** Host: record which playerIndex a guest sits at (used for promotion mapping). */
+  async setGuestPlayerIndex(peerIdx, playerIndex) {
+    if (!this.isHost || !this.code || !this._db) return;
+    const peer = this.peers[peerIdx];
+    if (!peer || peer.removed) return;
+    try {
+      await this._db.ref(`${ROOMS_PATH}/${this.code}/guests/${peer.guestId}/playerIndex`).set(playerIndex);
+    } catch {}
   }
 
   _onHostInbox(snap) {
@@ -241,7 +332,19 @@ export class FirebaseRoom {
         await db.ref(`${ROOMS_PATH}/${clean}/guests/${guestId}`).set({
           name: '',
           joinedAt: Date.now(),
+          hb: Date.now(),
         });
+        // Fast disconnect detection: server removes our entry on socket loss.
+        try {
+          db.ref(`${ROOMS_PATH}/${clean}/guests/${guestId}`).onDisconnect().remove();
+        } catch {}
+        // Heartbeat (backup for missed onDisconnect).
+        this._stopHeartbeat();
+        this._hbTimer = setInterval(() => {
+          if (this.closed || this.isHost) return;
+          db.ref(`${ROOMS_PATH}/${clean}/guests/${guestId}/hb`).set(Date.now()).catch(() => {});
+        }, HB_INTERVAL_MS);
+        if (this._hbTimer.unref) this._hbTimer.unref();
 
         // Listen for messages from host.
         const inboxRef = db.ref(`${ROOMS_PATH}/${clean}/msgs/toGuest/${guestId}`);
@@ -268,7 +371,15 @@ export class FirebaseRoom {
         // the room's startInfo will trigger beginGame via onmessage.
         const roomRef = db.ref(`${ROOMS_PATH}/${clean}`);
         const startCb = (snap) => {
-          if (!snap.exists() || this.closed) return;
+          if (this.closed) return;
+          if (!snap.exists()) {
+            // Room deleted: the host ended it. (Only after a successful join.)
+            if (this._joinToken === null && !this.isHost && !this._roomGoneFired) {
+              this._roomGoneFired = true;
+              setTimeout(() => { if (!this.closed) { try { this.onroomdeleted(); } catch {} } }, 0);
+            }
+            return;
+          }
           if (this._joinToken !== null && this._joinToken !== joinToken) return;
           const r = snap.val() || {};
           if (r.started && r.startInfo && !this._startFallbackDone) {
@@ -276,6 +387,24 @@ export class FirebaseRoom {
             const si = r.startInfo;
             // Simulate receiving START message.
             this.onmessage(0, { t: 'start', seed: si.seed, names: si.names, aiNames: si.aiNames || [], turnLimitMs: si.turnLimitMs });
+          }
+          // Host presence (guest only, after join). onleave(0) = host gone.
+          if (!this.isHost && this._joinToken === null) {
+            const now = Date.now();
+            const goneExplicit = !!(r.hostGone && r.hostId && r.hostGone === r.hostId);
+            const hbStale = !!(r.hostHb && now - r.hostHb > HOST_STALE_MS);
+            const hostAlive = !goneExplicit && r.hostHb && now - r.hostHb < HB_INTERVAL_MS * 2;
+            if ((goneExplicit || hbStale) && !this._hostGoneFired) {
+              this._hostGoneFired = true;
+              this._sawHostGone = true;
+              setTimeout(() => { if (!this.closed && !this.isHost) { try { this.onleave(0); } catch {} } }, 0);
+            } else if (hostAlive && this._sawHostGone) {
+              // A new host took over (possibly us via promotion on another tab —
+              // here it means someone else did).
+              this._sawHostGone = false;
+              this._hostGoneFired = false;
+              setTimeout(() => { if (!this.closed && !this.isHost) { try { this.onhostback(); } catch {} } }, 0);
+            }
           }
         };
         roomRef.on('value', startCb);
@@ -325,9 +454,83 @@ export class FirebaseRoom {
     } catch {}
   }
 
+  /** Guest: try to claim the host lock after the old host is gone. Only one guest wins. */
+  async tryAcquireHostLock() {
+    if (this.isHost || !this.code || !this._db || !this.myGuestId) return false;
+    try {
+      const ref = this._db.ref(`${ROOMS_PATH}/${this.code}/hostLock`);
+      const res = await ref.transaction((cur) => {
+        const now = Date.now();
+        if (!cur || now - (cur.at || 0) > 20000) {
+          return { holder: this.myGuestId, at: now };
+        }
+        return undefined; // abort: someone else holds a fresh lock
+      });
+      return !!(res && res.committed);
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Guest: take over as host after winning the host lock.
+   * Rebuilds the peer list from the live guest roster, starts host heartbeat
+   * and inbox listeners. Returns { playerIndex -> peerIdx } for the session.
+   */
+  async promoteToHost(hostName = '') {
+    if (this.isHost || !this.code || !this._db || !this.myGuestId) throw new Error('promote-failed');
+    const db = this._db;
+    const code = this.code;
+    this.isHost = true;
+    this._untrackAll();
+    this._stopHeartbeat();
+    this._hostId = genId();
+    // Rebuild peers from the current guest list (skip self and stale entries).
+    const snap = await db.ref(`${ROOMS_PATH}/${code}/guests`).once('value');
+    this.peers = [];
+    this._guestHb = {};
+    this._seenMsgs = new Set();
+    const guestMap = {};
+    const now = Date.now();
+    if (snap.exists()) {
+      snap.forEach((child) => {
+        const gid = child.key;
+        if (gid === this.myGuestId) return;
+        const g = child.val() || {};
+        const pIdx = g.playerIndex;
+        if (!Number.isInteger(pIdx) || pIdx < 0) return;
+        if (g.hb && now - g.hb > GUEST_TIMEOUT_MS) return;
+        const pi = this.peers.length;
+        this.peers.push({ guestId: gid, name: g.name || '?' });
+        this._guestHb[gid] = g.hb || 0;
+        guestMap[pIdx] = pi;
+      });
+    }
+    // Host listeners.
+    this._track(db.ref(`${ROOMS_PATH}/${code}/guests`), (s) => this._onGuests(s));
+    this._track(db.ref(`${ROOMS_PATH}/${code}/msgs/toHost`), (s) => this._onHostInbox(s));
+    // Claim host presence; releasing the lock implicitly.
+    await db.ref(`${ROOMS_PATH}/${code}`).update({
+      hostId: this._hostId,
+      hostGone: null,
+      hostHb: Date.now(),
+      hostName: hostName || '?',
+      hostLock: null,
+    });
+    try {
+      db.ref(`${ROOMS_PATH}/${code}/hostGone`).onDisconnect().set(this._hostId);
+    } catch {}
+    this._startHostHeartbeat();
+    this._hostGoneFired = false;
+    this._sawHostGone = false;
+    this._roomGoneFired = false;
+    return guestMap;
+  }
+
   /** Cancel an in-progress guestJoin. */
   cancelJoin() {
     this._joinToken = Symbol('cancelled');
+    this._stopHeartbeat();
     this._cleanupGuest();
   }
 
@@ -347,7 +550,7 @@ export class FirebaseRoom {
     try {
       if (this.isHost) {
         const peer = this.peers[i];
-        if (!peer) return;
+        if (!peer || peer.removed) return;
         await db.ref(`${ROOMS_PATH}/${this.code}/msgs/toGuest/${peer.guestId}`).push({ data: msg });
       } else {
         // Guest sends to host.
@@ -372,7 +575,17 @@ export class FirebaseRoom {
   async close() {
     this.closed = true;
     this._joinToken = Symbol('closed');
+    this._stopHeartbeat();
     this._untrackAll();
+    if (this._db && this.code) {
+      try {
+        // Cancel presence handlers first so they don't fire after close.
+        await this._db.ref(`${ROOMS_PATH}/${this.code}/hostGone`).onDisconnect().cancel();
+      } catch {}
+      try {
+        await this._db.ref(`${ROOMS_PATH}/${this.code}/guests/${this.myGuestId}`).onDisconnect().cancel();
+      } catch {}
+    }
     if (!this.isHost) {
       await this._cleanupGuest();
     } else if (this.code && this._db) {

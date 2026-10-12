@@ -1,12 +1,12 @@
 // Pure HTML-string renderers. Each takes the controller and returns markup; main.js owns the DOM.
 // All text interpolated here comes from our own card data / constants (no user input).
 
-import { COLORS, MASTER, PHASES, TOKEN_KEYS } from '../core/constants.js?v=1791808139';
-import { getBonuses, getPoints, tokenCount, bonusList, isSpecial } from '../core/engine.js?v=1791808139';
-import { BALLS, TRAINERS, evoText } from './controller.js?v=1791808139';
-import { dexSummary } from '../storage/store.js?v=1791808139';
-import { ACHIEVEMENTS } from '../data/achievements.js?v=1791808139';
-import { CHALLENGES, challengeProgress } from '../data/challenges.js?v=1791808139';
+import { COLORS, MASTER, PHASES, TOKEN_KEYS } from '../core/constants.js?v=1791809713';
+import { getBonuses, getPoints, tokenCount, bonusList, isSpecial } from '../core/engine.js?v=1791809713';
+import { BALLS, TRAINERS, evoText } from './controller.js?v=1791809713';
+import { dexSummary } from '../storage/store.js?v=1791809713';
+import { ACHIEVEMENTS } from '../data/achievements.js?v=1791809713';
+import { CHALLENGES, challengeProgress } from '../data/challenges.js?v=1791809713';
 
 const diffLabel = { easy: '쉬움', normal: '보통', hard: '어려움' };
 
@@ -616,19 +616,6 @@ export function netHelpHTML() {
       • 각자 자기 차례에만 둘 수 있어요.</p>
     </div>
     <div class="btnrow"><button class="btn primary" data-action="net-help-close">닫기</button></div>
-  </div></div>`;
-}
-
-export function rejoinWaitHTML(net) {
-  const rows = Object.keys(net.dropped || {}).map((k) => {
-    const name = net.names[Number(k)] || '게스트';
-    const left = net.dropped[k].left;
-    return `<div class="roster-row">📡 ${esc(name)} 재연결 대기 중… ${left}초</div>`;
-  }).join('');
-  return `<div class="overlay"><div class="panel netpanel">
-    <div class="title">📡 재연결 대기 중</div>
-    <div class="roster">${rows}</div>
-    <p class="sheet-p">다시 들어오면 이어서 할 수 있어요.<br><small>방 코드: ${esc(net.shortCode)} (친구에게 알려주세요)</small></p>
   </div></div>`;
 }
 

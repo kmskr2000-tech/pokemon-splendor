@@ -1,11 +1,11 @@
 // Multiplayer session: owns the NetRoom, the lockstep protocol flow, and the
 // multiplayer controller. main.js only renders `session` state and forwards taps.
 
-import { CARDS } from '../data/cards.js?v=1791808139';
-import { createController } from '../ui/controller.js?v=1791808139';
-import { NetRoom } from './webrtc.js?v=1791808139';
-import { FirebaseRoom } from './fireroom.js?v=1791808139';
-import { MSG, makeMsg, stateHash } from './protocol.js?v=1791808139';
+import { CARDS } from '../data/cards.js?v=1791809713';
+import { createController } from '../ui/controller.js?v=1791809713';
+import { NetRoom } from './webrtc.js?v=1791809713';
+import { FirebaseRoom } from './fireroom.js?v=1791809713';
+import { MSG, makeMsg, stateHash } from './protocol.js?v=1791809713';
 
 const MAX_PLAYERS = 4;
 const DEFAULT_TURN_LIMIT_MS = 45 * 1000; // 45 seconds per turn
@@ -36,7 +36,9 @@ export class NetSession {
     this.lastCode = ''; // peer mode: code used to join (for rejoin lookup)
     this.pendingPeer = -1;
     this.peerToPlayer = {}; // host: peerIdx -> playerIndex
-    this.dropped = {}; // host: playerIndex -> { left, timer } while waiting for rejoin
+    this.aiTakeover = {}; // host: playerIndex -> true (disconnected seat now driven by AI)
+    this._promoting = false; // guest: promotion in progress
+    this._waitingForHost = 0; // guest: timestamp until which we wait for a new host
     this.aiCount = 0; // host lobby: AI seats to add (0..4-humanCount)
     this.aiNames = [];
     this.ctrl = null;
@@ -80,6 +82,9 @@ export class NetSession {
         }
       },
       onleave: (i) => this.onLeave(i),
+      onhostback: () => this.onHostBack(),
+      onroomdeleted: () => this.onRoomDeleted(),
+      onsuperseded: () => this.onSuperseded(),
     };
     return this.usePeer ? new FirebaseRoom(handlers) : new NetRoom(handlers);
   }
@@ -152,7 +157,10 @@ export class NetSession {
   }
 
   broadcastRoster() {
-    this.room.broadcast(makeMsg(MSG.ROSTER, { names: this.names }));
+    this.room.broadcast(makeMsg(MSG.ROSTER, {
+      names: this.names,
+      aiTakeover: Object.keys(this.aiTakeover).map(Number),
+    }));
   }
 
   // AI seat names: trainer names not taken by humans.
@@ -180,16 +188,24 @@ export class NetSession {
   hostMsg(peerIdx, m) {
     switch (m.t) {
       case MSG.HELLO: {
-        // Rejoin mid-game?
+        // Rejoin mid-game? Hand the AI-driven seat back to the returning human.
         if (this.phase === 'playing') {
           const rIdx = m.rejoin;
-          if (Number.isInteger(rIdx) && this.dropped[rIdx]) {
-            clearInterval(this.dropped[rIdx].timer);
-            delete this.dropped[rIdx];
+          if (Number.isInteger(rIdx) && this.aiTakeover[rIdx]) {
+            delete this.aiTakeover[rIdx];
+            if (this.ctrl && this.ctrl.game.players[rIdx]) {
+              this.ctrl.game.players[rIdx].isAI = false;
+            }
             this.peerToPlayer[peerIdx] = rIdx;
+            if (this.room && typeof this.room.setGuestPlayerIndex === 'function') {
+              this.room.setGuestPlayerIndex(peerIdx, rIdx);
+            }
             this.room.sendTo(peerIdx, makeMsg(MSG.REJOIN_OK, {
-              playerIndex: rIdx, seed: this.seed, names: this.names, state: this.ctrl.game,
+              playerIndex: rIdx, seed: this.seed, names: this.names,
+              aiNames: this.aiNames, aiTakeover: Object.keys(this.aiTakeover).map(Number),
+              state: this.ctrl.game,
             }));
+            this.broadcastRoster();
             this.cb.onNotice(`📡 ${this.names[rIdx]}이(가) 다시 연결됐어요!`);
             this.cb.onRender();
           }
@@ -201,6 +217,9 @@ export class NetSession {
         const idx = this.names.length;
         this.names.push(this.cleanName(m.name));
         this.peerToPlayer[peerIdx] = idx;
+        if (this.room && typeof this.room.setGuestPlayerIndex === 'function') {
+          this.room.setGuestPlayerIndex(peerIdx, idx);
+        }
         this.room.sendTo(peerIdx, makeMsg(MSG.WELCOME, { playerIndex: idx }));
         this.broadcastRoster();
         this.offerCode = '';
@@ -291,13 +310,33 @@ export class NetSession {
         break;
       case MSG.REJOIN_OK:
         // Rejoin accepted: rebuild at the given seat, then take the live state.
-        this.beginGame(m.seed, m.names, m.playerIndex);
+        this.beginGame(m.seed, m.names, m.playerIndex, m.aiNames || []);
         this.ctrl.game = m.state;
+        // Sync AI-takeover flags (base AI seats are indices >= names.length).
+        if (Array.isArray(m.aiTakeover)) {
+          const take = new Set(m.aiTakeover);
+          this.aiTakeover = {};
+          m.aiTakeover.forEach((i) => { this.aiTakeover[i] = true; });
+          const humanCount = (m.names || []).length;
+          this.ctrl.game.players.forEach((p, i) => {
+            p.isAI = i >= humanCount || take.has(i);
+          });
+        }
         if (this.usePeer && this.lastCode) this.saveRejoin(this.lastCode, m.playerIndex);
         this.cb.onRender();
         break;
       case MSG.ROSTER:
         this.names = m.names;
+        // Sync AI-takeover seats (host converts disconnected seats to AI).
+        if (this.ctrl && Array.isArray(m.aiTakeover)) {
+          const take = new Set(m.aiTakeover);
+          this.aiTakeover = {};
+          m.aiTakeover.forEach((i) => { this.aiTakeover[i] = true; });
+          const humanCount = (m.names || []).length;
+          this.ctrl.game.players.forEach((p, i) => {
+            p.isAI = i >= humanCount || take.has(i);
+          });
+        }
         if (this.phase !== 'playing') this.phase = 'guestlobby';
         this.cb.onRender();
         break;
@@ -391,7 +430,7 @@ export class NetSession {
         // Time's up! Force a pass for the current player.
         const current = this.ctrl.game.current;
         // Only auto-pass if it's a human's turn (AI acts on its own).
-        const isAI = this.aiNames && this.aiNames[current];
+        const isAI = !!(this.ctrl.game.players[current] && this.ctrl.game.players[current].isAI);
         if (!isAI) {
           const timeoutAction = { type: 'timeout' };
           const res = this.ctrl.applyRemote(timeoutAction);
@@ -429,32 +468,35 @@ export class NetSession {
     }
   }
 
+  /** Host: a disconnected seat is immediately taken over by AI. */
+  convertToAI(pIdx) {
+    if (pIdx == null || this.aiTakeover[pIdx]) return;
+    const who = this.names[pIdx] || '게스트';
+    this.aiTakeover[pIdx] = true;
+    if (this.ctrl && this.ctrl.game.players[pIdx]) {
+      this.ctrl.game.players[pIdx].isAI = true;
+    }
+    this.broadcastRoster();
+    this.cb.onNotice(`📡 ${who}의 연결이 끊겨 AI가 이어받아요.`);
+    this.cb.onRender();
+    // The host's render loop (scheduleAI) will drive this seat from now on.
+  }
+
   onLeave(peerIdx) {
     if (this.phase === 'playing') {
       if (this.role === 'host') {
         const pIdx = this.peerToPlayer[peerIdx];
-        const who = this.names[pIdx] || '게스트';
-        if (pIdx == null || this.dropped[pIdx]) return;
-        // Wait 60s for rejoin instead of ending immediately.
-        const drop = { left: 60 };
-        drop.timer = setInterval(() => {
-          drop.left -= 1;
-          if (drop.left <= 0) {
-            clearInterval(drop.timer);
-            delete this.dropped[pIdx];
-            this.cb.onNotice(`📡 ${who}가 돌아오지 않아 대전이 종료됩니다.`);
-            this.end();
-          } else {
-            this.cb.onRender();
-          }
-        }, 1000);
-        this.dropped[pIdx] = drop;
-        this.cb.onNotice(`📡 ${who}의 연결이 끊겼어요. 60초 안에 다시 들어오면 이어져요.`);
-        this.cb.onRender();
+        if (pIdx == null || this.aiTakeover[pIdx]) return;
+        this.convertToAI(pIdx);
         return;
       }
-      // Guest: host is gone, game over.
-      this.cb.onNotice('📡 방장의 연결이 끊겼어요. 대전이 종료됩니다.');
+      // Guest: the host is gone. Try to take over as the new host.
+      this.onHostGone();
+      return;
+    }
+    // Guest in lobby: host left.
+    if (this.role === 'guest') {
+      this.cb.onNotice('📡 방장이 방을 나갔어요.');
       this.end();
       return;
     }
@@ -471,11 +513,96 @@ export class NetSession {
     }
   }
 
+  /** Guest: host connection lost mid-game. Compete for the host lock, then promote. */
+  async onHostGone() {
+    if (this.phase !== 'playing' || this.role !== 'guest' || this._promoting) return;
+    this._promoting = true;
+    this.cb.onNotice('📡 방장의 연결이 끊겼어요. 새 방장을 정하는 중...');
+    this.cb.onRender();
+    try {
+      // Small jitter to reduce lock contention.
+      await new Promise((r) => setTimeout(r, 500 + Math.random() * 1000));
+      if (this.phase !== 'playing' || this.role !== 'guest') return;
+      if (typeof this.room.tryAcquireHostLock !== 'function') {
+        this.cb.onNotice('📡 방장의 연결이 끊겼어요. 대전이 종료됩니다.');
+        this.end();
+        return;
+      }
+      const acquired = await this.room.tryAcquireHostLock();
+      if (acquired) {
+        await this.promoteToHost();
+      } else {
+        this._watchForNewHost();
+      }
+    } catch {
+      this.cb.onNotice('📡 방장 승계에 실패했어요. 대전이 종료됩니다.');
+      this.end();
+    } finally {
+      this._promoting = false;
+    }
+  }
+
+  /** Guest: wait for another guest's promotion; retry if nobody takes over. */
+  _watchForNewHost() {
+    this._waitingForHost = Date.now();
+    this.cb.onNotice('📡 다른 게스트가 방장을 이어받는 중...');
+    this.cb.onRender();
+    setTimeout(() => {
+      if (!this._waitingForHost || this.phase !== 'playing' || this.role !== 'guest') return;
+      // Still no host after 30s (promoter may have died) → retry.
+      this._waitingForHost = 0;
+      this.onHostGone();
+    }, 30000);
+  }
+
+  /** Guest: someone else became the new host. Resume as guest. */
+  onHostBack() {
+    if (this.phase !== 'playing' || this.role !== 'guest') return;
+    this._waitingForHost = 0;
+    this.cb.onNotice('📡 새 방장이 게임을 이어받았어요.');
+    this.cb.onRender();
+  }
+
+  /** Guest: room node deleted = host ended the game intentionally. */
+  onRoomDeleted() {
+    if (this.role !== 'guest') return;
+    if (this.phase === 'playing') {
+      this.cb.onNotice('📡 방장이 게임을 종료했어요.');
+    } else {
+      this.cb.onNotice('📡 방이 종료됐어요.');
+    }
+    this.end();
+  }
+
+  /** Host: another client claimed hostId (split-brain). Step down. */
+  onSuperseded() {
+    if (this.phase !== 'playing') return;
+    this.cb.onNotice('📡 다른 기기가 방장을 이어받았어요. 이 화면은 종료됩니다.');
+    this.end();
+  }
+
+  /** Guest: promote to host. Old host's seat (index 0) becomes AI. */
+  async promoteToHost() {
+    this.role = 'host';
+    const guestMap = await this.room.promoteToHost(this.myName);
+    this.peerToPlayer = guestMap;
+    // The old host's seat is now AI-driven.
+    const oldHostIdx = 0;
+    this.aiTakeover[oldHostIdx] = true;
+    if (this.ctrl && this.ctrl.game.players[oldHostIdx]) {
+      this.ctrl.game.players[oldHostIdx].isAI = true;
+    }
+    this.resetTurnTimer();
+    this.startTurnTimer();
+    this.broadcastRoster();
+    this.cb.onNotice('📡 방장 연결이 끊겨 그 자리는 AI가 이어받고, 당신이 새 방장이 됐어요.');
+    this.cb.onRender();
+  }
+
   end() {
     this.stopTurnTimer();
-    for (const k of Object.keys(this.dropped || {})) {
-      try { clearInterval(this.dropped[k].timer); } catch {}
-    }
+    this._promoting = false;
+    this._waitingForHost = 0;
     try { this.room?.close(); } catch { /* noop */ }
     this.clearRejoin();
     this.reset();
