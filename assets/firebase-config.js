@@ -1,16 +1,17 @@
-// Firebase config for multiplayer signaling (poke-splender project).
+// Firebase config for multiplayer (poke-splender-c253e project, Pokemon Splendor only).
 // Realtime Database rules:
 //   {
 //     "rules": {
 //       "pkmspl-rooms": {
-//         "$code": { ".read": true, ".write": true }
+//         ".read": true,
+//         "$code": { ".write": true }
 //       }
 //     }
 //   }
 window.__FIREBASE_CONFIG = {
-  apiKey: "AIzaSyBXNa3PnRhil1KpQlc04G0-zsaUItdCG8U",
-  authDomain: "poke-splender.firebaseapp.com",
-  databaseURL: "https://poke-splender-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "poke-splender",
-  appId: "1:523830666183:web:4a6f550093b022dc7e6fe2",
+  apiKey: "AIzaSyDPJX9jSvahojG_5LrkQuG-v11IytKbd7E",
+  authDomain: "poke-splender-c253e.firebaseapp.com",
+  databaseURL: "https://poke-splender-c253e-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "poke-splender-c253e",
+  appId: "1:169815564667:web:db0cf7f1bce27eccef5dde",
 };
