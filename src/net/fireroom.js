@@ -16,7 +16,7 @@
 //       toHost/{pushId}: { from: guestId, data: msgString }
 //       toGuest/{guestId}/{pushId}: { data: msgString }
 
-import { parseMsg } from './protocol.js?v=1791809713';
+import { parseMsg } from './protocol.js?v=1791850297';
 
 const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // no confusing 0/O/1/I
 const ROOMS_PATH = 'pkmspl-rooms';
@@ -68,28 +68,8 @@ function getDb() {
 export async function listRooms() {
   const db = getDb();
   const snap = await db.ref(ROOMS_PATH).once('value');
-  const rooms = [];
-  if (!snap.exists()) return rooms;
-  const now = Date.now();
-  const MAX_AGE_MS = 30 * 60 * 1000; // 30 min
-  snap.forEach((child) => {
-    const code = child.key;
-    const r = child.val() || {};
-    // Skip started games and stale ghost rooms.
-    if (r.started) return;
-    if (r.created && now - r.created > MAX_AGE_MS) return;
-    const guests = r.guests ? Object.keys(r.guests).length : 0;
-    rooms.push({
-      code,
-      title: r.title || '제목 없음',
-      hostName: r.hostName || '?',
-      playerCount: 1 + guests, // host + guests
-      created: r.created || 0,
-      turnLimitMs: r.turnLimitMs || 45000,
-    });
-  });
-  // Newest first.
-  rooms.sort((a, b) => b.created - a.created);
+  const { rooms, dead } = classifyRooms(snap);
+  sweepDeadRooms(db, dead);
   return rooms;
 }
 
@@ -98,31 +78,87 @@ export function watchRooms(cb) {
   const db = getDb();
   const ref = db.ref(ROOMS_PATH);
   const handler = (snap) => {
-    const rooms = [];
-    const now = Date.now();
-    const MAX_AGE_MS = 30 * 60 * 1000; // 30 min
-    if (snap.exists()) {
-      snap.forEach((child) => {
-        const code = child.key;
-        const r = child.val() || {};
-        if (r.started) return;
-        if (r.created && now - r.created > MAX_AGE_MS) return;
-        const guests = r.guests ? Object.keys(r.guests).length : 0;
-        rooms.push({
-          code,
-          title: r.title || '제목 없음',
-          hostName: r.hostName || '?',
-          playerCount: 1 + guests,
-          created: r.created || 0,
-          turnLimitMs: r.turnLimitMs || 45000,
-        });
-      });
-      rooms.sort((a, b) => b.created - a.created);
-    }
+    const { rooms, dead } = classifyRooms(snap);
+    sweepDeadRooms(db, dead);
     cb(rooms);
   };
   ref.on('value', handler);
   return () => { try { ref.off('value', handler); } catch {} };
+}
+
+// Room liveness: a room is listed only while its host is alive.
+// Hosts heartbeat every HB_INTERVAL_MS; HOST_FRESH_MS tolerates missed beats.
+export const HOST_FRESH_MS = 90000;
+// Dead rooms are deleted after this much total silence (protects
+// host-promotion and rejoin races; husks with no timestamps go immediately).
+export const ROOM_SWEEP_MS = 30 * 60 * 1000;
+
+/** Pure: is this room shown in the lobby? (exported for tests) */
+export function isRoomJoinable(r, now = Date.now()) {
+  if (!r || r.started) return false;
+  const hb = r.hostHb || 0;
+  if (hb && now - hb < HOST_FRESH_MS) return true;
+  // Old clients without heartbeat: show only brand-new rooms.
+  const created = r.created || 0;
+  if (!hb && created && now - created < HOST_FRESH_MS) return true;
+  return false;
+}
+
+/** Pure: is this room dead and safe to delete? (exported for tests) */
+export function isRoomDead(r, now = Date.now()) {
+  if (!r) return true;
+  const hb = r.hostHb || 0;
+  if (hb && now - hb < HOST_FRESH_MS) return false; // host alive
+  const guests = r.guests || {};
+  let last = Math.max(hb, r.created || 0);
+  for (const k of Object.keys(guests)) {
+    const ghb = guests[k].hb || 0;
+    if (ghb && now - ghb < HOST_FRESH_MS) return false; // live guest
+    if (ghb > last) last = ghb;
+  }
+  return now - last > ROOM_SWEEP_MS;
+}
+
+/** Split a rooms snapshot into joinable rooms and dead room codes. */
+function classifyRooms(snap) {
+  const rooms = [];
+  const dead = [];
+  const now = Date.now();
+  if (snap.exists()) {
+    snap.forEach((child) => {
+      const code = child.key;
+      const r = child.val() || {};
+      if (isRoomDead(r, now)) {
+        dead.push(code);
+        return;
+      }
+      if (!isRoomJoinable(r, now)) return;
+      const guests = r.guests ? Object.keys(r.guests).length : 0;
+      rooms.push({
+        code,
+        title: r.title || '제목 없음',
+        hostName: r.hostName || '?',
+        playerCount: 1 + guests, // host + guests
+        created: r.created || 0,
+        turnLimitMs: r.turnLimitMs || 45000,
+      });
+    });
+    // Newest first.
+    rooms.sort((a, b) => b.created - a.created);
+  }
+  return { rooms, dead };
+}
+
+let _lastSweep = 0;
+/** Best-effort deletion of dead rooms (throttled; any client may do it). */
+function sweepDeadRooms(db, deadCodes) {
+  if (!deadCodes.length) return;
+  const now = Date.now();
+  if (now - _lastSweep < 60000) return;
+  _lastSweep = now;
+  for (const code of deadCodes) {
+    db.ref(`${ROOMS_PATH}/${code}`).remove().catch(() => {});
+  }
 }
 
 export class FirebaseRoom {
@@ -255,6 +291,9 @@ export class FirebaseRoom {
             try { this.onleave(i); } catch {}
           }
         }
+        // Recheck closed right before the write: close() may have removed the
+        // room while the async sweep above was running (avoids husk rooms).
+        if (this.closed || !this.isHost) return;
         await db.ref(`${ROOMS_PATH}/${code}/hostHb`).set(now);
       } catch {}
     }, HB_INTERVAL_MS);
