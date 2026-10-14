@@ -1,11 +1,11 @@
 // Multiplayer session: owns the NetRoom, the lockstep protocol flow, and the
 // multiplayer controller. main.js only renders `session` state and forwards taps.
 
-import { CARDS } from '../data/cards.js?v=1791956075';
-import { createController } from '../ui/controller.js?v=1791956075';
-import { NetRoom } from './webrtc.js?v=1791956075';
-import { FirebaseRoom } from './fireroom.js?v=1791956075';
-import { MSG, makeMsg, stateHash } from './protocol.js?v=1791956075';
+import { CARDS } from '../data/cards.js?v=1791962003';
+import { createController } from '../ui/controller.js?v=1791962003';
+import { NetRoom } from './webrtc.js?v=1791962003';
+import { FirebaseRoom } from './fireroom.js?v=1791962003';
+import { MSG, makeMsg, stateHash } from './protocol.js?v=1791962003';
 
 const MAX_PLAYERS = 4;
 const DEFAULT_TURN_LIMIT_MS = 45 * 1000; // 45 seconds per turn
@@ -82,6 +82,16 @@ export class NetSession {
         }
       },
       onleave: (i) => this.onLeave(i),
+      onreconnect: () => {
+        // Guest socket dropped and came back after the host already saw us leave:
+        // re-send HELLO with our saved seat so the host hands it back from AI.
+        if (this.role === 'guest' && this.room && this.phase === 'playing') {
+          const hello = { name: this.myName };
+          const rj = this.usePeer && this.lastCode ? this.loadRejoin(this.lastCode) : null;
+          if (rj) hello.rejoin = rj.playerIndex;
+          this.room.send(makeMsg(MSG.HELLO, hello));
+        }
+      },
       onhostback: () => this.onHostBack(),
       onroomdeleted: () => this.onRoomDeleted(),
       onsuperseded: () => this.onSuperseded(),

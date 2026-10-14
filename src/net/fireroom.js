@@ -16,7 +16,7 @@
 //       toHost/{pushId}: { from: guestId, data: msgString }
 //       toGuest/{guestId}/{pushId}: { data: msgString }
 
-import { parseMsg } from './protocol.js?v=1791956075';
+import { parseMsg } from './protocol.js?v=1791962003';
 
 const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // no confusing 0/O/1/I
 const ROOMS_PATH = 'pkmspl-rooms';
@@ -26,8 +26,9 @@ const ROOMS_PATH = 'pkmspl-rooms';
 // watching the host). onDisconnect handlers give fast detection on clean socket
 // loss; heartbeats cover the rest.
 const HB_INTERVAL_MS = 15000;
-const GUEST_TIMEOUT_MS = 35000;
-const HOST_STALE_MS = 45000;
+// Timeouts tolerate mobile background throttling (timers can stall ~1 min).
+const GUEST_TIMEOUT_MS = 90000;
+const HOST_STALE_MS = 90000;
 
 export function genCode(len = 6) {
   const buf = new Uint32Array(len);
@@ -162,7 +163,8 @@ function sweepDeadRooms(db, deadCodes) {
 }
 
 export class FirebaseRoom {
-  constructor({ onmessage = () => {}, onjoin = () => {}, onleave = () => {}, onhostback = () => {}, onroomdeleted = () => {}, onsuperseded = () => {} } = {}) {
+  constructor({ onmessage = () => {}, onjoin = () => {}, onleave = () => {}, onhostback = () => {}, onroomdeleted = () => {}, onsuperseded = () => {}, onreconnect = () => {} } = {}) {
+    this.onreconnect = onreconnect;
     this.onmessage = onmessage;
     this.onjoin = onjoin;
     this.onleave = onleave;
@@ -225,6 +227,7 @@ export class FirebaseRoom {
         db.ref(`${ROOMS_PATH}/${code}/hostGone`).onDisconnect().set(this._hostId);
       } catch {}
       this._startHostHeartbeat();
+      this._startPresenceRecovery();
       // Listen for new guests.
       const guestsRef = db.ref(`${ROOMS_PATH}/${code}/guests`);
       this._track(guestsRef, (s) => this._onGuests(s));
@@ -272,6 +275,9 @@ export class FirebaseRoom {
     this._hbTimer = setInterval(async () => {
       if (this.closed || !this.isHost) return;
       try {
+        // Write the beat first so a slow/failed guard read can't starve guests' staleness check.
+        if (this.closed || !this.isHost) return;
+        db.ref(`${ROOMS_PATH}/${code}/hostHb`).set(Date.now()).catch(() => {});
         // Split-brain guard: if another client claimed hostId, step down.
         const idSnap = await db.ref(`${ROOMS_PATH}/${code}/hostId`).once('value');
         if (idSnap.val() !== this._hostId) {
@@ -298,6 +304,87 @@ export class FirebaseRoom {
       } catch {}
     }, HB_INTERVAL_MS);
     if (this._hbTimer.unref) this._hbTimer.unref();
+  }
+
+  /** Immediate heartbeat (tab resumed / network back). */
+  _pingNow() {
+    const db = this._db;
+    if (!db || !this.code || this.closed) return;
+    const now = Date.now();
+    try {
+      if (this.isHost) db.ref(`${ROOMS_PATH}/${this.code}/hostHb`).set(now).catch(() => {});
+      else if (this.myGuestId) db.ref(`${ROOMS_PATH}/${this.code}/guests/${this.myGuestId}/hb`).set(now).catch(() => {});
+    } catch {}
+  }
+
+  /**
+   * Recover presence after a transient socket drop. The server fires our
+   * onDisconnect handlers (guest entry removed / hostGone set) even when the
+   * client reconnects a few seconds later, so re-assert presence on reconnect
+   * and resume instantly when the tab becomes visible again.
+   */
+  _startPresenceRecovery() {
+    this._stopPresenceRecovery();
+    const db = this._db;
+    if (!db) return;
+    const connRef = db.ref('.info/connected');
+    let first = true;
+    const connCb = (snap) => {
+      if (this.closed) return;
+      if (snap.val() !== true) return;
+      if (first) { first = false; return; }
+      this._restorePresence().catch(() => {});
+    };
+    connRef.on('value', connCb);
+    this._presence = { connRef, connCb };
+    if (typeof document !== 'undefined') {
+      this._onVisible = () => {
+        if (document.visibilityState === 'visible') this._pingNow();
+      };
+      this._onOnline = () => this._pingNow();
+      document.addEventListener('visibilitychange', this._onVisible);
+      window.addEventListener('online', this._onOnline);
+      window.addEventListener('pageshow', this._onOnline);
+    }
+  }
+
+  _stopPresenceRecovery() {
+    if (this._presence) {
+      try { this._presence.connRef.off('value', this._presence.connCb); } catch {}
+      this._presence = null;
+    }
+    if (typeof document !== 'undefined' && this._onVisible) {
+      document.removeEventListener('visibilitychange', this._onVisible);
+      window.removeEventListener('online', this._onOnline);
+      window.removeEventListener('pageshow', this._onOnline);
+      this._onVisible = this._onOnline = null;
+    }
+  }
+
+  async _restorePresence() {
+    const db = this._db;
+    const code = this.code;
+    if (!db || !code || this.closed) return;
+    if (this.isHost) {
+      // Only reclaim if we are still the registered host (not superseded).
+      const idSnap = await db.ref(`${ROOMS_PATH}/${code}/hostId`).once('value');
+      if (idSnap.val() !== this._hostId || this.closed) return;
+      await db.ref(`${ROOMS_PATH}/${code}`).update({ hostGone: null, hostHb: Date.now() });
+      try { db.ref(`${ROOMS_PATH}/${code}/hostGone`).onDisconnect().set(this._hostId); } catch {}
+    } else if (this.myGuestId) {
+      const ref = db.ref(`${ROOMS_PATH}/${code}/guests/${this.myGuestId}`);
+      const snap = await ref.once('value');
+      if (this.closed) return;
+      const wasRemoved = !snap.exists();
+      if (wasRemoved) {
+        await ref.set({ name: this._guestName || '', joinedAt: Date.now(), hb: Date.now() });
+      } else {
+        await ref.child('hb').set(Date.now());
+      }
+      try { ref.onDisconnect().remove(); } catch {}
+      // Host may have handed our seat to AI: ask to be re-seated (session sends HELLO+rejoin).
+      if (wasRemoved) { try { this.onreconnect(); } catch {} }
+    }
   }
 
   _stopHeartbeat() {
@@ -384,6 +471,7 @@ export class FirebaseRoom {
           db.ref(`${ROOMS_PATH}/${clean}/guests/${guestId}/hb`).set(Date.now()).catch(() => {});
         }, HB_INTERVAL_MS);
         if (this._hbTimer.unref) this._hbTimer.unref();
+        this._startPresenceRecovery();
 
         // Listen for messages from host.
         const inboxRef = db.ref(`${ROOMS_PATH}/${clean}/msgs/toGuest/${guestId}`);
@@ -477,6 +565,7 @@ export class FirebaseRoom {
   /** Guest: set display name (called by session after join). */
   async setGuestName(name) {
     if (this.isHost || !this.code || !this.myGuestId || !this._db) return;
+    this._guestName = name;
     try {
       await this._db.ref(`${ROOMS_PATH}/${this.code}/guests/${this.myGuestId}/name`).set(name);
     } catch {}
@@ -560,6 +649,7 @@ export class FirebaseRoom {
       db.ref(`${ROOMS_PATH}/${code}/hostGone`).onDisconnect().set(this._hostId);
     } catch {}
     this._startHostHeartbeat();
+    this._startPresenceRecovery();
     this._hostGoneFired = false;
     this._sawHostGone = false;
     this._roomGoneFired = false;
@@ -615,6 +705,7 @@ export class FirebaseRoom {
     this.closed = true;
     this._joinToken = Symbol('closed');
     this._stopHeartbeat();
+    this._stopPresenceRecovery();
     this._untrackAll();
     if (this._db && this.code) {
       try {
