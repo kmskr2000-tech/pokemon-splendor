@@ -5,8 +5,8 @@
 import {
   COLORS, MASTER, PHASES, MAX_HAND,
   createGame, applyAction, legalActions, computePayment, evolveOptions, getCurrentPlayer, tokenCount,
-} from '../core/index.js?v=1791850297';
-import { chooseAction } from '../ai/heuristic.js?v=1791850297';
+} from '../core/index.js?v=1791956075';
+import { chooseAction } from '../ai/heuristic.js?v=1791956075';
 
 export const BALLS = {
   monster: { file: 'poke-ball', name: '몬스터볼', short: '몬스터' },
@@ -314,7 +314,7 @@ export function describeEvent(ev, ctrl) {
     case 'evolve': return `${who}: ${name(ev.from)} → ${name(ev.to)} 진화!`;
     case 'pass': return `${who}: 차례 넘김`;
     case 'timeout': return `${who}: ⏰ 시간 초과로 차례 넘김`;
-    case 'endTriggered': return `${who}가 18점 달성! 마지막 라운드`;
+    case 'endTriggered': return `${who}가 21점 달성! 마지막 라운드`;
     case 'gameEnd': return '게임 종료';
     default: return null;
   }

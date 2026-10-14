@@ -1,12 +1,12 @@
 // Pure HTML-string renderers. Each takes the controller and returns markup; main.js owns the DOM.
 // All text interpolated here comes from our own card data / constants (no user input).
 
-import { COLORS, MASTER, PHASES, TOKEN_KEYS } from '../core/constants.js?v=1791850297';
-import { getBonuses, getPoints, tokenCount, bonusList, isSpecial } from '../core/engine.js?v=1791850297';
-import { BALLS, TRAINERS, evoText } from './controller.js?v=1791850297';
-import { dexSummary } from '../storage/store.js?v=1791850297';
-import { ACHIEVEMENTS } from '../data/achievements.js?v=1791850297';
-import { CHALLENGES, challengeProgress } from '../data/challenges.js?v=1791850297';
+import { COLORS, MASTER, PHASES, TOKEN_KEYS } from '../core/constants.js?v=1791956075';
+import { getBonuses, getPoints, tokenCount, bonusList, isSpecial } from '../core/engine.js?v=1791956075';
+import { BALLS, TRAINERS, evoText } from './controller.js?v=1791956075';
+import { dexSummary } from '../storage/store.js?v=1791956075';
+import { ACHIEVEMENTS } from '../data/achievements.js?v=1791956075';
+import { CHALLENGES, challengeProgress } from '../data/challenges.js?v=1791956075';
 
 const diffLabel = { easy: '쉬움', normal: '보통', hard: '어려움' };
 
@@ -88,7 +88,7 @@ export function headerHTML(ctrl) {
   if (ctrl.finished) badge = '게임 종료';
   else if (ctrl.isHumanTurn) badge = '▶ 당신의 차례';
   else badge = `${ctrl.current.name} 차례`;
-  const last = ctrl.lastRound ? `<div class="lastround">마지막 라운드! ${s.players[s.endTriggeredBy].name}이(가) 18점 달성</div>` : '';
+  const last = ctrl.lastRound ? `<div class="lastround">마지막 라운드! ${s.players[s.endTriggeredBy].name}이(가) 21점 달성</div>` : '';
   const netbadge = ctrl.mp ? `<div class="netbadge">📡 대전 ${ctrl.mp.names.length}인</div>` : '';
   // Turn timer for multiplayer (90s limit).
   let timerHtml = '';
@@ -387,7 +387,7 @@ export function startHTML({ save = null, dex = null, cards = [], options = null,
   return `<div class="overlay"><div class="panel">
     <div class="title big">포켓몬 스플렌더<small>POKEMON SPLENDOR · DOT EDITION</small></div>
     ${notice ? `<p class="sheet-p warn">${esc(notice)}</p>` : ''}
-    <p class="sheet-p">트레이너를 골라 AI 3명과 4인전을 시작해요.<br>18점을 먼저 모으는 트레이너가 승리!</p>
+    <p class="sheet-p">트레이너를 골라 AI 3명과 4인전을 시작해요.<br>21점을 먼저 모으는 트레이너가 승리!</p>
     ${resume}
     <div class="tiles">${TRAINERS.map((t, i) => `<button class="tile t${i}" data-action="start" data-name="${t}">${trainerFaceSrc(t) ? `<img class="tileface" src="${trainerFaceSrc(t)}" alt="">` : `<span class="tilebox"></span>`}${t}</button>`).join('')}</div>
     <div class="difflabel">AI 난이도</div>
@@ -413,7 +413,7 @@ export function rulesHTML() {
     <div class="title big">룰 설명</div>
     <div class="rules">
       <h4>■ 목표</h4>
-      <p><b>18점</b>을 먼저 모으면 마지막 라운드! 전원이 같은 턴 수를 마치면 종료, 최고점이 승리해요.</p>
+      <p><b>21점</b>을 먼저 모으면 마지막 라운드! 전원이 같은 턴 수를 마치면 종료, 최고점이 승리해요.</p>
       <h4>■ 내 차례에 하는 일 (하나만 선택)</h4>
       <p>① <b>서로 다른 볼 3개</b> 가져오기 (마스터볼 제외)<br>
       ② <b>같은 볼 2개</b> 가져오기 (공급처에 4개 이상 남았을 때만)<br>
@@ -441,7 +441,7 @@ export function tutorialHTML(tut) {
     `<b>STEP 1</b> 볼을 모아보세요!<br>서로 다른 볼 3개를 누른 뒤 <b>[가져가기]</b>를 누르세요.`,
     `<b>STEP 2</b> 포켓몬을 잡아보세요!<br>카드를 누르면 필요한 볼을 확인할 수 있어요. 볼이 모자라면 몇 턴 더 모아보세요.`,
     `<b>STEP 3</b> 보너스 획득!<br>잡은 포켓몬의 보너스 색 볼은 게임 끝까지 1개씩 영구 할인돼요.`,
-    `<b>STEP 4</b> 18점을 먼저 모으면 승리!<br>카드를 미리 <b>[찜하기]</b>로 확보하거나, 보너스를 모아 <b>진화</b>시켜보세요. 행운을 빌어요!`,
+    `<b>STEP 4</b> 21점을 먼저 모으면 승리!<br>카드를 미리 <b>[찜하기]</b>로 확보하거나, 보너스를 모아 <b>진화</b>시켜보세요. 행운을 빌어요!`,
   ];
   const last = tut.step >= steps.length - 1;
   const mid = tut.step === 2;
@@ -492,7 +492,7 @@ function beginnerTip(ctrl) {
       if (card && ctrl.canBuy(card.id)) return '지금 바로 잡을 수 있는 포켓몬이 있어요! 반짝이는 카드를 눌러보세요.';
     }
   }
-  return '18점이 목표! 볼을 모아서 포켓몬을 잡으세요. 보너스가 쌓이면 할인이 커져요.';
+  return '21점이 목표! 볼을 모아서 포켓몬을 잡으세요. 보너스가 쌓이면 할인이 커져요.';
 }
 
 export function helpHTML(ctrl, options, tutorial) {

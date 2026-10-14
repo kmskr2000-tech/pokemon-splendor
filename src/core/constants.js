@@ -10,7 +10,7 @@ export const TOKENS_PER_COLOR = { 2: 4, 3: 5, 4: 7 };
 
 export const MAX_TOKENS = 10;
 export const MAX_HAND = 3;
-export const WIN_POINTS = 18;
+export const WIN_POINTS = 21;
 
 // Deck / table keys. Card.tier is 1 | 2 | 3 | 'rare' | 'legend'.
 export const TIER_KEYS = ['1', '2', '3', 'rare', 'legend'];
