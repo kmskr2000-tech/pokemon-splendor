@@ -4,7 +4,7 @@
 // Implements the same room interface as NetRoom (webrtc.js) so NetSession
 // works unchanged: send / sendTo / broadcast / onmessage / onjoin / onleave.
 
-import { parseMsg } from './protocol.js?v=1792486048';
+import { parseMsg } from './protocol.js?v=1792486266';
 
 const ID_PREFIX = 'pkmspl-';
 const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // no confusing 0/O/1/I

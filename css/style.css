@@ -506,3 +506,7 @@ button.orsv:hover { border-color: #4ade80; }
 .dexdname { font-size: 15px; margin-bottom: 6px; }
 .dexdname small { color: var(--muted); font-size: 10px; }
 .dexdetail .btn { font-size: 10px; padding: 5px 9px; }
+
+.dexcell img.dexball { width: 11px; height: 11px; }
+.dexcell .dexcost { flex-wrap: nowrap; }
+.dexdetail img.dexball { width: 14px; height: 14px; }

@@ -1,12 +1,12 @@
 // Pure HTML-string renderers. Each takes the controller and returns markup; main.js owns the DOM.
 // All text interpolated here comes from our own card data / constants (no user input).
 
-import { COLORS, MASTER, PHASES, TOKEN_KEYS } from '../core/constants.js?v=1792486048';
-import { getBonuses, getPoints, tokenCount, bonusList, isSpecial } from '../core/engine.js?v=1792486048';
-import { BALLS, TRAINERS, evoText } from './controller.js?v=1792486048';
-import { dexSummary } from '../storage/store.js?v=1792486048';
-import { ACHIEVEMENTS } from '../data/achievements.js?v=1792486048';
-import { CHALLENGES, challengeProgress } from '../data/challenges.js?v=1792486048';
+import { COLORS, MASTER, PHASES, TOKEN_KEYS } from '../core/constants.js?v=1792486266';
+import { getBonuses, getPoints, tokenCount, bonusList, isSpecial } from '../core/engine.js?v=1792486266';
+import { BALLS, TRAINERS, evoText } from './controller.js?v=1792486266';
+import { dexSummary } from '../storage/store.js?v=1792486266';
+import { ACHIEVEMENTS } from '../data/achievements.js?v=1792486266';
+import { CHALLENGES, challengeProgress } from '../data/challenges.js?v=1792486266';
 
 const diffLabel = { easy: '쉬움', normal: '보통', hard: '어려움' };
 
@@ -510,14 +510,14 @@ export function helpHTML(ctrl, options, tutorial) {
 // Ball cost of a card as icon chips (dex + detail). Special cards also need 1 master ball.
 export function costChipsHTML(card) {
   const chips = COLORS.filter((c) => card.cost[c])
-    .map((c) => `<span class="dexchip">${ballImg(c, 'mini2')}${card.cost[c]}</span>`).join('');
-  return chips + (isSpecial(card) ? `<span class="dexchip">${ballImg(MASTER, 'mini2')}1</span>` : '');
+    .map((c) => `<span class="dexchip">${ballImg(c, 'dexball')}${card.cost[c]}</span>`).join('');
+  return chips + (isSpecial(card) ? `<span class="dexchip">${ballImg(MASTER, 'dexball')}1</span>` : '');
 }
 
 function dexDetailHTML(card, caught, cards) {
   const byId = new Map(cards.map((c) => [c.id, c]));
   const name = caught ? card.name : '???';
-  const bonuses = bonusList(card).map((b) => `${ballImg(b, 'mini2')}${BALLS[b].name}`).join(' ');
+  const bonuses = bonusList(card).map((b) => `${ballImg(b, 'dexball')}${BALLS[b].name}`).join(' ');
   return `<div class="dexdetail">
     <img class="${caught ? '' : 'sil'}" src="${pokeSrc(card.dex)}" alt="">
     <div class="dexdinfo">
@@ -542,7 +542,7 @@ export function dexHTML(dex, cards, detailId = null) {
     const head = e
       ? `<img src="${pokeSrc(c.dex)}" alt="${c.name}"><span class="dn">${c.name}</span><span class="dc">×${e.n}${e.evolved ? ` · 진화 ${e.evolved}` : ''}</span>`
       : `<img class="sil" src="${pokeSrc(c.dex)}" alt=""><span class="dn">???</span><span class="dc">${tierLabel[c.tier]}</span>`;
-    const bonus = bonusList(c).map((b) => ballImg(b, 'mini2')).join('');
+    const bonus = bonusList(c).map((b) => ballImg(b, 'dexball')).join('');
     return `<button class="dexcell${e ? ' got' : ''}" data-action="dex-card" data-card="${c.id}">${head}<span class="dexcost">${costChipsHTML(c)}</span><span class="dc">${bonus} 보너스${c.points ? ` · ${c.points}점` : ''}</span></button>`;
   };
   const g = dex.games;
