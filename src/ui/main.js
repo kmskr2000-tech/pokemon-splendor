@@ -41,17 +41,18 @@ function showInAppGuide() {
 }
 showInAppGuide();
 
-import { CARDS } from '../data/cards.js?v=1791962003';
-import { ACHIEVEMENTS, checkAchievements } from '../data/achievements.js?v=1791962003';
-import { CHALLENGES, challengeWon } from '../data/challenges.js?v=1791962003';
-import { createController } from './controller.js?v=1791962003';
-import * as V from './view.js?v=1791962003';
-import { NetSession } from '../net/session.js?v=1791962003';
-import { listRooms, watchRooms } from '../net/fireroom.js?v=1791962003';
-import { getBonuses, getPoints, bonusList } from '../core/engine.js?v=1791962003';
-import { startBGM, stopBGM, unlockAudio } from '../audio/bgm.js?v=1791962003';
-import { sfx, setSFXEnabled } from '../audio/sfx.js?v=1791962003';
-import { browserStorage, loadDex, loadSave, saveGame, clearSave, recordCatch, recordGame, loadOptions, saveOptions, loadAchv, unlockAchv, loadRecords, recordResult, victoryScore, loadChal, completeChal } from '../storage/store.js?v=1791962003';
+import { CARDS } from '../data/cards.js?v=1792485731';
+import { ACHIEVEMENTS, checkAchievements } from '../data/achievements.js?v=1792485731';
+import { CHALLENGES, challengeWon } from '../data/challenges.js?v=1792485731';
+import { createController } from './controller.js?v=1792485731';
+import * as V from './view.js?v=1792485731';
+import { NetSession } from '../net/session.js?v=1792485731';
+import { listRooms, watchRooms } from '../net/fireroom.js?v=1792485731';
+import { getBonuses, getPoints, bonusList } from '../core/engine.js?v=1792485731';
+import { startBGM, stopBGM, unlockAudio } from '../audio/bgm.js?v=1792485731';
+import { sfx, setSFXEnabled } from '../audio/sfx.js?v=1792485731';
+import { browserStorage, loadDex, loadSave, saveGame, clearSave, recordCatch, recordGame, loadOptions, saveOptions, loadAchv, unlockAchv, loadRecords, recordResult, victoryScore, loadChal, completeChal } from '../storage/store.js?v=1792485731';
+import { createTurnAlerter } from './turn-alert.js?v=1792485731';
 
 const params = new URLSearchParams(location.search);
 const AI_DELAY = params.has('fast') ? 0 : 1600; // ?fast=1 skips the pacing delay (tests)
@@ -77,6 +78,7 @@ let net = null; // NetSession while in multiplayer menu/lobby/game
 let netNotice = ''; // one-shot notice shown on the start/net screen
 let netHelpOpen = false;
 let dexOpen = false;
+let dexDetail = null;
 let rulesOpen = false;
 let achvOpen = false;
 let recordsOpen = false;
@@ -86,6 +88,7 @@ let optionsOpen = false;
 const storage = browserStorage();
 const options = loadOptions(storage);
 setSFXEnabled(options.sfx);
+const turnAlerter = createTurnAlerter(() => options);
 
 const $ = (id) => document.getElementById(id);
 
@@ -97,6 +100,7 @@ function setHTML(id, html) {
 
 let lastFinished = false;
 let lastTurnPlayer = -1;
+let lastPhaseKey = '';
 
 function render() {
   checkChallenge();
@@ -108,10 +112,20 @@ function render() {
   } else if (!ctrl || !ctrl.finished) {
     lastFinished = false;
   }
-  // Your-turn notification
-  if (ctrl && !ctrl.finished && ctrl.isHumanTurn && lastTurnPlayer !== ctrl.game.current) {
-    // Only notify when turn actually changed to us (not on first render)
-    if (lastTurnPlayer !== -1) sfx.yourTurn();
+  // Your-turn alerts (banner/flash/chime x2/vibrate/browser notification/
+  // blinking title). Strong when the turn passes to me, light when my own
+  // action moves me into the discard/evolve phase.
+  if (ctrl && !ctrl.finished && ctrl.isHumanTurn) {
+    const phaseKey = `${ctrl.game.current}:${ctrl.state.phase}`;
+    if (phaseKey !== lastPhaseKey) {
+      const isAction = ctrl.state.phase === 'action';
+      const strong = isAction && lastTurnPlayer !== -1 && lastTurnPlayer !== ctrl.human;
+      if (isAction ? (lastTurnPlayer !== -1) : lastPhaseKey !== '') turnAlerter.alert(ctrl.state.phase, strong);
+      lastPhaseKey = phaseKey;
+    }
+  } else {
+    if (lastPhaseKey !== '') turnAlerter.clear();
+    lastPhaseKey = '';
   }
   if (ctrl) lastTurnPlayer = ctrl.game.current;
   else lastTurnPlayer = -1;
@@ -128,7 +142,7 @@ function render() {
     netNotice = '';
   }
   if (ctrl?.challengeDone) overlay = V.challengeEndHTML(ctrl.challengeDone === 'won', ctrl.challenge);
-  if (dexOpen) overlay = V.dexHTML(loadDex(storage), CARDS);
+  if (dexOpen) overlay = V.dexHTML(loadDex(storage), CARDS, dexDetail);
   else if (rulesOpen) overlay = V.rulesHTML();
   else if (achvOpen) overlay = V.achvHTML(loadAchv(storage).unlocked);
   else if (recordsOpen) overlay = V.recordsHTML(loadRecords(storage));
@@ -415,6 +429,7 @@ function savePlayerName(name) {
 const netInputVal = (id) => document.getElementById(id)?.value ?? '';
 
 document.addEventListener('click', (e) => {
+  turnAlerter.acknowledge();
   const el = e.target.closest('[data-action]');
   if (!el || el.disabled) return;
   // Unlock audio on first interaction; start menu BGM if enabled.
@@ -424,8 +439,10 @@ document.addEventListener('click', (e) => {
   switch (d.action) {
     case 'start': startGame(d.name); return;
     case 'resume': resumeGame(); return;
-    case 'dex': dexOpen = true; break;
-    case 'dex-close': dexOpen = false; break;
+    case 'dex': dexOpen = true; dexDetail = null; break;
+    case 'dex-close': dexOpen = false; dexDetail = null; break;
+    case 'dex-card': dexDetail = d.card; break;
+    case 'dex-detail-close': dexDetail = null; break;
     case 'rules': rulesOpen = true; break;
     case 'rules-close': rulesOpen = false; break;
     case 'achv': achvOpen = true; break;
@@ -450,6 +467,11 @@ document.addEventListener('click', (e) => {
       options.sfx = !options.sfx;
       saveOptions(storage, options);
       setSFXEnabled(options.sfx);
+      break;
+    case 'toggle-turn-notify':
+      options.turnNotify = options.turnNotify === false;
+      saveOptions(storage, options);
+      if (options.turnNotify) turnAlerter.requestPermission();
       break;
     case 'difficulty':
       if (['easy', 'normal', 'hard'].includes(d.v)) {

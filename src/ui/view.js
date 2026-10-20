@@ -1,12 +1,12 @@
 // Pure HTML-string renderers. Each takes the controller and returns markup; main.js owns the DOM.
 // All text interpolated here comes from our own card data / constants (no user input).
 
-import { COLORS, MASTER, PHASES, TOKEN_KEYS } from '../core/constants.js?v=1791962003';
-import { getBonuses, getPoints, tokenCount, bonusList, isSpecial } from '../core/engine.js?v=1791962003';
-import { BALLS, TRAINERS, evoText } from './controller.js?v=1791962003';
-import { dexSummary } from '../storage/store.js?v=1791962003';
-import { ACHIEVEMENTS } from '../data/achievements.js?v=1791962003';
-import { CHALLENGES, challengeProgress } from '../data/challenges.js?v=1791962003';
+import { COLORS, MASTER, PHASES, TOKEN_KEYS } from '../core/constants.js?v=1792485731';
+import { getBonuses, getPoints, tokenCount, bonusList, isSpecial } from '../core/engine.js?v=1792485731';
+import { BALLS, TRAINERS, evoText } from './controller.js?v=1792485731';
+import { dexSummary } from '../storage/store.js?v=1792485731';
+import { ACHIEVEMENTS } from '../data/achievements.js?v=1792485731';
+import { CHALLENGES, challengeProgress } from '../data/challenges.js?v=1792485731';
 
 const diffLabel = { easy: '쉬움', normal: '보통', hard: '어려움' };
 
@@ -471,6 +471,11 @@ export function optionsHTML(options) {
       <span>🔔 효과음</span>
       <span class="toggle ${options.sfx ? 'on' : ''}">${options.sfx ? '켬' : '끔'}</span>
     </button>
+    <button class="optrow" data-action="toggle-turn-notify">
+      <span>⏰ 내 차례 알림</span>
+      <span class="toggle ${options.turnNotify === false ? '' : 'on'}">${options.turnNotify === false ? '끔' : '켬'}</span>
+    </button>
+    <p class="sheet-p">내 차례가 오면 배너·진동·소리로 알려줘요. 켤 때 브라우저 알림 권한을 허용하면 다른 탭에 있어도 알림이 와요.</p>
     <div class="btnrow"><button class="btn ghost" data-action="restart">타이틀로 돌아가기</button></div>
     <div class="btnrow"><button class="btn primary" data-action="options-close">닫기</button></div>
   </div></div>`;
@@ -502,19 +507,51 @@ export function helpHTML(ctrl, options, tutorial) {
   return `<div class="helpbanner"><span class="helptag">TIP</span><span>${tip}</span></div>`;
 }
 
-export function dexHTML(dex, cards) {
+// Ball cost of a card as icon chips (dex + detail). Special cards also need 1 master ball.
+export function costChipsHTML(card) {
+  const chips = COLORS.filter((c) => card.cost[c])
+    .map((c) => `<span class="dexchip">${ballImg(c, 'mini2')}${card.cost[c]}</span>`).join('');
+  return chips + (isSpecial(card) ? `<span class="dexchip">${ballImg(MASTER, 'mini2')}1</span>` : '');
+}
+
+function dexDetailHTML(card, caught, cards) {
+  const byId = new Map(cards.map((c) => [c.id, c]));
+  const name = caught ? card.name : '???';
+  const bonuses = bonusList(card).map((b) => `${ballImg(b, 'mini2')}${BALLS[b].name}`).join(' ');
+  return `<div class="dexdetail">
+    <img class="${caught ? '' : 'sil'}" src="${pokeSrc(card.dex)}" alt="">
+    <div class="dexdinfo">
+      <div class="dexdname">${name} <small>${tierLabel[card.tier]}${card.points ? ` · ${card.points}점` : ''}</small></div>
+      <div class="paylbl">필요한 볼</div>
+      <div class="dexcost">${costChipsHTML(card)}</div>
+      <div class="paylbl">보너스 (할인)</div>
+      <div class="dexcost">${bonuses}</div>
+      <div class="paylbl">진화 정보</div>
+      <div class="evoinfo">${evoText(card, byId)}</div>
+    </div>
+    <button class="btn ghost" data-action="dex-detail-close">접기</button>
+  </div>`;
+}
+
+export function dexHTML(dex, cards, detailId = null) {
   const sum = dexSummary(dex, cards);
   const order = { 1: 1, 2: 2, 3: 3, rare: 4, legend: 5 };
   const list = [...cards].sort((a, b) => order[a.tier] - order[b.tier] || a.dex - b.dex);
   const cell = (c) => {
     const e = dex.caught[c.id];
-    return e
-      ? `<div class="dexcell got"><img src="${pokeSrc(c.dex)}" alt="${c.name}"><span class="dn">${c.name}</span><span class="dc">×${e.n}${e.evolved ? ` · 진화 ${e.evolved}` : ''}</span></div>`
-      : `<div class="dexcell"><img class="sil" src="${pokeSrc(c.dex)}" alt=""><span class="dn">???</span><span class="dc">${tierLabel[c.tier]}</span></div>`;
+    const head = e
+      ? `<img src="${pokeSrc(c.dex)}" alt="${c.name}"><span class="dn">${c.name}</span><span class="dc">×${e.n}${e.evolved ? ` · 진화 ${e.evolved}` : ''}</span>`
+      : `<img class="sil" src="${pokeSrc(c.dex)}" alt=""><span class="dn">???</span><span class="dc">${tierLabel[c.tier]}</span>`;
+    const bonus = bonusList(c).map((b) => ballImg(b, 'mini2')).join('');
+    return `<button class="dexcell${e ? ' got' : ''}" data-action="dex-card" data-card="${c.id}">${head}<span class="dexcost">${costChipsHTML(c)}</span><span class="dc">${bonus} 보너스${c.points ? ` · ${c.points}점` : ''}</span></button>`;
   };
   const g = dex.games;
+  const detailCard = detailId ? cards.find((c) => c.id === detailId) : null;
+  const detail = detailCard ? dexDetailHTML(detailCard, !!dex.caught[detailCard.id], cards) : '';
   return `<div class="overlay"><div class="panel dexpanel">
     <div class="title big">도감<small>잡은 포켓몬 ${sum.caught}/${sum.total} · ${g.played}판 ${g.won}승</small></div>
+    <p class="sheet-p">포켓몬을 누르면 필요한 볼과 진화 정보를 크게 볼 수 있어요.</p>
+    ${detail}
     <div class="dexgrid">${list.map(cell).join('')}</div>
     <div class="btnrow"><button class="btn primary" data-action="dex-close">닫기</button></div>
   </div></div>`;
