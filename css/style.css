@@ -262,9 +262,10 @@ button.card:not(:disabled):active { transform: translate(3px, 3px); box-shadow: 
 .btn.resume small { display: block; font-size: 10px; margin-top: 4px; opacity: .8; }
 .sheet-p.warn { color: #fbbf24; margin: 8px 0; }
 .dexpanel { max-width: 560px; max-height: 92vh; display: flex; flex-direction: column; }
-.dexgrid { overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 8px; margin: 10px 0 12px; padding-right: 2px; }
-.dexcell { background: var(--panel); border: 3px solid var(--ink); padding: 6px 2px; text-align: center; font-size: 10px; display: flex; flex-direction: column; align-items: center; gap: 3px; }
-.dexcell img { width: 56px; height: 56px; image-rendering: pixelated; }
+.dexgrid { overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(74px, 1fr)); gap: 6px; margin: 10px 0 12px; padding-right: 2px; }
+.dexcell { background: var(--panel); border: 3px solid var(--ink); padding: 4px 1px; text-align: center; font-size: 9px; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.dexcell img { width: 40px; height: 40px; image-rendering: pixelated; }
+.dexcell .mini2 { width: 9px; height: 9px; }
 .dexcell img.sil { filter: brightness(0) opacity(.55); }
 .dexcell.got { border-color: var(--gold); }
 .dexcell .dc { color: var(--muted); font-size: 9px; }
@@ -497,7 +498,7 @@ button.orsv:hover { border-color: #4ade80; }
 /* ---------- dex cost info (2026-10-20) ---------- */
 .dexcell { font-family: inherit; color: inherit; cursor: pointer; width: 100%; }
 .dexcost { display: inline-flex; gap: 3px; flex-wrap: wrap; justify-content: center; align-items: center; }
-.dexchip { display: inline-flex; align-items: center; gap: 1px; font-size: 9px; color: #e8e8f0; }
+.dexchip { display: inline-flex; align-items: center; gap: 0; font-size: 8px; color: #e8e8f0; }
 .dexdetail { display: flex; gap: 10px; align-items: flex-start; background: var(--panel); border: 3px solid var(--gold); padding: 10px; margin: 8px 0; text-align: left; }
 .dexdetail > img { width: 72px; height: 72px; image-rendering: pixelated; }
 .dexdetail > img.sil { filter: brightness(0) opacity(.55); }
