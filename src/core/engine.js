@@ -5,8 +5,8 @@ import {
   COLORS, MASTER, TOKEN_KEYS, MASTER_TOTAL, TOKENS_PER_COLOR, MAX_TOKENS, MAX_HAND,
   WIN_POINTS, TIER_KEYS, RESERVABLE_TIER_KEYS, TABLE_SLOTS, SPECIAL_TIER_KEYS, PHASES,
   RULE_CHOICES,
-} from './constants.js?v=1792486266';
-import { nextInt, shuffle } from './rng.js?v=1792486266';
+} from './constants.js';
+import { nextInt, shuffle } from './rng.js';
 
 const ok = (state, events) => ({ ok: true, state, events });
 const fail = (error) => ({ ok: false, error });
@@ -138,6 +138,46 @@ export function getRanking(state) {
 // ---------- setup ----------
 
 // players: [{ name, isAI?, tileId? }], cards: full card list (see design doc 2.1).
+// ---------- 혜자 포켓몬 (밸런스 패치 2026-10-21, 사용자 피드백 3항) ----------
+// '반드시 먹어야 하는 카드' = 득점에 비해 획득 난이도(총 볼 소요량)가 현저히 낮은 카드.
+// 티어별 절대 조건으로 판정한다. 현재 카드셋은 티어·승점별 총비용이 정규화되어
+// 해당 카드가 없으므로, 이 판정은 미래 카드셋 회귀를 막는 안전망이다.
+export function isHyejaCard(card) {
+  const total = sumValues(card.cost);
+  const t = String(card.tier);
+  if (t === '1') return card.points >= 1 && total <= 3;
+  if (t === '2') return card.points >= 3 && total <= 7;
+  if (t === '3') return card.points >= 4 && total <= 9;
+  if (t === 'rare') return card.points >= 4 && total <= 7;
+  if (t === 'legend') return card.points >= 5 && total <= 9;
+  return false;
+}
+
+// 초기 보드에서 혜자 카드를 덱 깊숙한 곳의 비-혜자 카드와 교환한다.
+// (state rng를 사용하므로 시드별 결정성은 유지된다)
+function pushHyejaOffOpeningRow(state, key) {
+  const row = state.table[key];
+  const deck = state.decks[key];
+  for (let i = 0; i < row.length; i++) {
+    if (!row[i] || !isHyejaCard(row[i])) continue;
+    let swap = -1;
+    for (let tries = 0; tries < deck.length * 2 + 4 && deck.length > 0; tries++) {
+      const j = nextInt(state, deck.length);
+      if (deck[j] && !isHyejaCard(deck[j])) { swap = j; break; }
+    }
+    if (swap < 0) {
+      for (let j = 0; j < deck.length; j++) {
+        if (deck[j] && !isHyejaCard(deck[j])) { swap = j; break; }
+      }
+    }
+    if (swap >= 0) {
+      const tmp = deck[swap];
+      deck[swap] = row[i];
+      row[i] = tmp;
+    }
+  }
+}
+
 export function createGame({ cards, players, seed = 1 }) {
   const n = players.length;
   if (n < 2 || n > 4) throw new Error('players must be 2-4');
@@ -178,6 +218,8 @@ export function createGame({ cards, players, seed = 1 }) {
     state.decks[key] = deck;
     state.table[key] = Array.from({ length: TABLE_SLOTS[key] }, () => deck.shift() ?? null);
   }
+  // 사용자 피드백 3항: 첫 턴 보드에 혜자 포켓몬이 깔리지 않도록 덱 안쪽과 교환.
+  for (const key of TIER_KEYS) pushHyejaOffOpeningRow(state, key);
 
   state.startPlayer = nextInt(state, n);
   state.current = state.startPlayer;
