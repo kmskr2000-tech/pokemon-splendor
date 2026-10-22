@@ -41,18 +41,18 @@ function showInAppGuide() {
 }
 showInAppGuide();
 
-import { CARDS } from '../data/cards.js?v=1792647591';
-import { ACHIEVEMENTS, checkAchievements } from '../data/achievements.js?v=1792647591';
-import { CHALLENGES, challengeWon } from '../data/challenges.js?v=1792647591';
-import { createController } from './controller.js?v=1792647591';
-import * as V from './view.js?v=1792647591';
-import { NetSession } from '../net/session.js?v=1792647591';
-import { listRooms, watchRooms } from '../net/fireroom.js?v=1792647591';
-import { getBonuses, getPoints, bonusList } from '../core/engine.js?v=1792647591';
-import { startBGM, stopBGM, unlockAudio } from '../audio/bgm.js?v=1792647591';
-import { sfx, setSFXEnabled } from '../audio/sfx.js?v=1792647591';
-import { browserStorage, loadDex, loadSave, saveGame, clearSave, recordCatch, recordGame, loadOptions, saveOptions, loadAchv, unlockAchv, loadRecords, recordResult, victoryScore, loadChal, completeChal } from '../storage/store.js?v=1792647591';
-import { createTurnAlerter } from './turn-alert.js?v=1792647591';
+import { CARDS } from '../data/cards.js';
+import { ACHIEVEMENTS, checkAchievements } from '../data/achievements.js';
+import { CHALLENGES, challengeWon } from '../data/challenges.js';
+import { createController } from './controller.js';
+import * as V from './view.js';
+import { NetSession } from '../net/session.js';
+import { listRooms, watchRooms } from '../net/fireroom.js';
+import { getBonuses, getPoints, bonusList } from '../core/engine.js';
+import { startBGM, stopBGM, unlockAudio } from '../audio/bgm.js';
+import { sfx, setSFXEnabled } from '../audio/sfx.js';
+import { browserStorage, loadDex, loadSave, saveGame, clearSave, recordCatch, recordGame, loadOptions, saveOptions, loadAchv, unlockAchv, loadRecords, recordResult, victoryScore, loadChal, completeChal } from '../storage/store.js';
+import { createTurnAlerter } from './turn-alert.js';
 
 const params = new URLSearchParams(location.search);
 const AI_DELAY = params.has('fast') ? 0 : 1600; // ?fast=1 skips the pacing delay (tests)
@@ -557,6 +557,21 @@ document.addEventListener('click', (e) => {
       break;
     } break;
     case 'net-guest-join': if (net) { netNotice = ''; net.guestJoin(net.myName, netInputVal('netoffer')); return; } break;
+    case 'net-rejoin': if (net) {
+      const code = d.code;
+      if (!code) break;
+      // Continue button: rejoin the recent room (saved seat is sent with HELLO).
+      if (net.myName && net.myName.trim()) {
+        netNotice = '';
+        net.guestJoin(net.myName, code);
+        return;
+      } else {
+        net.pendingJoinCode = code;
+        net.phase = 'guestname';
+        netNotice = '';
+      }
+      break;
+    }
     case 'net-cancel-join': if (net) { net.cancelGuestJoin(); } break;
     case 'net-copy': {
       const t = document.getElementById(d.from);

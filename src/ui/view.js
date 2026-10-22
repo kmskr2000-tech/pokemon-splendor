@@ -1,12 +1,12 @@
 // Pure HTML-string renderers. Each takes the controller and returns markup; main.js owns the DOM.
 // All text interpolated here comes from our own card data / constants (no user input).
 
-import { COLORS, MASTER, PHASES, TOKEN_KEYS } from '../core/constants.js?v=1792647591';
-import { getBonuses, getPoints, tokenCount, bonusList, isSpecial } from '../core/engine.js?v=1792647591';
-import { BALLS, TRAINERS, evoText } from './controller.js?v=1792647591';
-import { dexSummary } from '../storage/store.js?v=1792647591';
-import { ACHIEVEMENTS } from '../data/achievements.js?v=1792647591';
-import { CHALLENGES, challengeProgress } from '../data/challenges.js?v=1792647591';
+import { COLORS, MASTER, PHASES, TOKEN_KEYS } from '../core/constants.js';
+import { getBonuses, getPoints, tokenCount, bonusList, isSpecial } from '../core/engine.js';
+import { BALLS, TRAINERS, evoText } from './controller.js';
+import { dexSummary } from '../storage/store.js';
+import { ACHIEVEMENTS } from '../data/achievements.js';
+import { CHALLENGES, challengeProgress } from '../data/challenges.js';
 
 const diffLabel = { easy: '쉬움', normal: '보통', hard: '어려움' };
 
@@ -647,8 +647,8 @@ export function netHelpHTML() {
       <h4>■ 알아두면 좋아요</h4>
       <p>• 같은 와이파이가 아니어도 돼요. 인터넷만 되면 OK.<br>
       • 카톡 인앱 브라우저(팝업)보다 Safari·Chrome 앱에서 열면 안정적이에요.<br>
-      • 실수로 나가도 60초 안에 같은 코드로 들어오면 이어서 할 수 있어요.<br>
-      • 방장이 나가면 게임이 끝나요.<br>
+      • 실수로 나가도 10분 안에 같은 코드로 들어오면 이어서 할 수 있어요.<br>
+      • 방장이 나가면 남은 사람 중 한 명이 방장을 이어받아 게임이 계속돼요. 나간 방장도 메뉴의 '최근 방 이어하기'로 자기 자리로 돌아올 수 있어요.<br>
       • 인원이 부족하면 남는 자리를 AI로 채울 수 있어요 (방장 로비에서 선택).<br>
       • 각자 자기 차례에만 둘 수 있어요.</p>
     </div>
@@ -676,6 +676,8 @@ export function netHTML(net, notice = '') {
           </div>`).join('');
       body = `<p class="sheet-p">친구와 대전해요. 방을 골라 입장하세요. (2~4인)</p>
         <div class="roomlist">${roomHtml}</div>
+        ${(() => { const rj = typeof net.peekRejoin === 'function' ? net.peekRejoin() : null;
+          return rj ? `<div class="btnrow"><button class="btn alt" data-action="net-rejoin" data-code="${esc(rj.code)}">📲 최근 방 이어하기 <small>${esc(rj.code)}</small></button></div>` : ''; })()}
         <div class="btnrow"><button class="btn primary" data-action="net-host">방 만들기</button>
         <button class="btn ghost" data-action="net-lobby-refresh">🔄 새로고침</button></div>
         <div class="btnrow">${modeBtn}

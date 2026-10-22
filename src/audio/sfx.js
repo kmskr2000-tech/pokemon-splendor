@@ -1,5 +1,5 @@
 // Sound effects via Web Audio API. Shares the AudioContext with bgm.js.
-import { unlockAudio } from './bgm.js?v=1792647591';
+import { unlockAudio } from './bgm.js?v=1792648491';
 
 let ctx = null;
 let sfxGain = null;

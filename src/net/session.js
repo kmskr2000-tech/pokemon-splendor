@@ -53,12 +53,17 @@ export class NetSession {
       localStorage.setItem('pkmspl-rejoin', JSON.stringify({ code, playerIndex, at: Date.now() }));
     } catch {}
   }
-  loadRejoin(code) {
+  /** Saved rejoin entry regardless of code (10-min TTL), or null. */
+  peekRejoin() {
     try {
       const o = JSON.parse(localStorage.getItem('pkmspl-rejoin'));
-      if (o && o.code === code && Date.now() - o.at < 10 * 60 * 1000) return o;
+      if (o && o.code && Date.now() - o.at < 10 * 60 * 1000) return o;
     } catch {}
     return null;
+  }
+  loadRejoin(code) {
+    const o = this.peekRejoin();
+    return o && o.code === code ? o : null;
   }
   clearRejoin() {
     try { localStorage.removeItem('pkmspl-rejoin'); } catch {}
@@ -117,6 +122,9 @@ export class NetSession {
     try {
       if (this.usePeer) {
         this.shortCode = await this.room.hostCreate(this.myName, title, this.turnLimitMs);
+        // Remember the room so the host can rejoin their own seat (index 0)
+        // after a disconnect, once a guest has taken over as host.
+        this.saveRejoin(this.shortCode, 0);
         this.phase = 'hostlobby';
       } else {
         const { peerIdx, code } = await this.room.createOffer();
