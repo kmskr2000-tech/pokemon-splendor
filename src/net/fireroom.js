@@ -16,7 +16,7 @@
 //       toHost/{pushId}: { from: guestId, data: msgString }
 //       toGuest/{guestId}/{pushId}: { data: msgString }
 
-import { parseMsg } from './protocol.js?v=1792588472';
+import { parseMsg } from './protocol.js';
 
 const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // no confusing 0/O/1/I
 const ROOMS_PATH = 'pkmspl-rooms';
@@ -597,6 +597,35 @@ export class FirebaseRoom {
       return !!(res && res.committed);
     } catch {
       return false;
+    }
+  }
+
+  /**
+   * Host: persist the authoritative game snapshot.
+   * Written after every applied action, before its broadcast, so the snapshot
+   * is always a superset of what any guest has seen. A successor host adopts
+   * this snapshot when its own lockstep mirror diverged.
+   */
+  async writeSnapshot(state, h, n) {
+    if (!this.isHost || !this.code || !this._db) return;
+    const payload = { state, h: h || null, n: n || 0, at: Date.now() };
+    const ref = this._db.ref(`${ROOMS_PATH}/${this.code}/snapshot`);
+    try {
+      await ref.set(payload);
+    } catch {
+      // One retry: a blip here must not silently break the superset invariant.
+      try { await ref.set(payload); } catch {}
+    }
+  }
+
+  /** Guest (promoting): read the last authoritative snapshot, if any. */
+  async readSnapshot() {
+    if (this.isHost || !this.code || !this._db) return null;
+    try {
+      const snap = await this._db.ref(`${ROOMS_PATH}/${this.code}/snapshot`).once('value');
+      return snap.exists() ? snap.val() : null;
+    } catch {
+      return null;
     }
   }
 

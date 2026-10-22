@@ -41,18 +41,18 @@ function showInAppGuide() {
 }
 showInAppGuide();
 
-import { CARDS } from '../data/cards.js?v=1792588472';
-import { ACHIEVEMENTS, checkAchievements } from '../data/achievements.js?v=1792588472';
-import { CHALLENGES, challengeWon } from '../data/challenges.js?v=1792588472';
-import { createController } from './controller.js?v=1792588472';
-import * as V from './view.js?v=1792588472';
-import { NetSession } from '../net/session.js?v=1792588472';
-import { listRooms, watchRooms } from '../net/fireroom.js?v=1792588472';
-import { getBonuses, getPoints, bonusList } from '../core/engine.js?v=1792588472';
-import { startBGM, stopBGM, unlockAudio } from '../audio/bgm.js?v=1792588472';
-import { sfx, setSFXEnabled } from '../audio/sfx.js?v=1792588472';
-import { browserStorage, loadDex, loadSave, saveGame, clearSave, recordCatch, recordGame, loadOptions, saveOptions, loadAchv, unlockAchv, loadRecords, recordResult, victoryScore, loadChal, completeChal } from '../storage/store.js?v=1792588472';
-import { createTurnAlerter } from './turn-alert.js?v=1792588472';
+import { CARDS } from '../data/cards.js?v=1792647591';
+import { ACHIEVEMENTS, checkAchievements } from '../data/achievements.js?v=1792647591';
+import { CHALLENGES, challengeWon } from '../data/challenges.js?v=1792647591';
+import { createController } from './controller.js?v=1792647591';
+import * as V from './view.js?v=1792647591';
+import { NetSession } from '../net/session.js?v=1792647591';
+import { listRooms, watchRooms } from '../net/fireroom.js?v=1792647591';
+import { getBonuses, getPoints, bonusList } from '../core/engine.js?v=1792647591';
+import { startBGM, stopBGM, unlockAudio } from '../audio/bgm.js?v=1792647591';
+import { sfx, setSFXEnabled } from '../audio/sfx.js?v=1792647591';
+import { browserStorage, loadDex, loadSave, saveGame, clearSave, recordCatch, recordGame, loadOptions, saveOptions, loadAchv, unlockAchv, loadRecords, recordResult, victoryScore, loadChal, completeChal } from '../storage/store.js?v=1792647591';
+import { createTurnAlerter } from './turn-alert.js?v=1792647591';
 
 const params = new URLSearchParams(location.search);
 const AI_DELAY = params.has('fast') ? 0 : 1600; // ?fast=1 skips the pacing delay (tests)

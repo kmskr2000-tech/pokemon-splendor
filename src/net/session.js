@@ -1,11 +1,11 @@
 // Multiplayer session: owns the NetRoom, the lockstep protocol flow, and the
 // multiplayer controller. main.js only renders `session` state and forwards taps.
 
-import { CARDS } from '../data/cards.js?v=1792588472';
-import { createController } from '../ui/controller.js?v=1792588472';
-import { NetRoom } from './webrtc.js?v=1792588472';
-import { FirebaseRoom } from './fireroom.js?v=1792588472';
-import { MSG, makeMsg, stateHash } from './protocol.js?v=1792588472';
+import { CARDS } from '../data/cards.js';
+import { createController } from '../ui/controller.js';
+import { NetRoom } from './webrtc.js';
+import { FirebaseRoom } from './fireroom.js';
+import { MSG, makeMsg, stateHash } from './protocol.js';
 
 const MAX_PLAYERS = 4;
 const DEFAULT_TURN_LIMIT_MS = 45 * 1000; // 45 seconds per turn
@@ -42,6 +42,8 @@ export class NetSession {
     this.aiCount = 0; // host lobby: AI seats to add (0..4-humanCount)
     this.aiNames = [];
     this.ctrl = null;
+    this.actionCount = 0; // host: applied actions (authoritative snapshot sequence)
+    this._commitChain = Promise.resolve(); // host: ordered snapshot->broadcast chain
   }
 
   // Rejoin persistence (guest): remember code+playerIndex so an accidental
@@ -241,12 +243,7 @@ export class NetSession {
         if (this.phase !== 'playing' || !this.ctrl) return;
         const res = this.ctrl.applyRemote(m.action);
         if (res.ok) {
-          const pIdx = this.peerToPlayer[peerIdx];
-          this.room.broadcast(
-            makeMsg(MSG.ACTION, { from: pIdx, action: m.action, h: stateHash(this.ctrl.game) }),
-            peerIdx,
-          );
-          this.cb.onRender();
+          this.hostCommit(m.action, this.peerToPlayer[peerIdx], peerIdx);
         }
         break;
       }
@@ -414,6 +411,8 @@ export class NetSession {
     this.aiNames = aiNames;
     this.myIndex = myIndex;
     this.phase = 'playing';
+    this.actionCount = 0;
+    this._commitChain = Promise.resolve();
     this.resetTurnTimer();
     this.startTurnTimer();
     this.cb.onGameStart(ctrl);
@@ -445,14 +444,8 @@ export class NetSession {
           const timeoutAction = { type: 'timeout' };
           const res = this.ctrl.applyRemote(timeoutAction);
           if (res.ok) {
-            this.room.broadcast(makeMsg(MSG.ACTION, {
-              from: current,
-              action: timeoutAction,
-              h: stateHash(this.ctrl.game),
-              timeout: true,
-            }));
+            this.hostCommit(timeoutAction, current);
             this.cb.onNotice(`⏰ ${this.names[current]}의 시간이 초과돼 자동으로 넘겼어요.`);
-            this.cb.onRender();
           }
         }
         this.resetTurnTimer();
@@ -472,10 +465,32 @@ export class NetSession {
   sendAction(action, fromIdx) {
     if (this.phase !== 'playing' || !this.ctrl) return;
     if (this.role === 'host') {
-      this.room.broadcast(makeMsg(MSG.ACTION, { from: fromIdx ?? this.myIndex, action, h: stateHash(this.ctrl.game) }));
+      this.hostCommit(action, fromIdx ?? this.myIndex);
     } else {
       this.room.send(makeMsg(MSG.ACTION, { action }));
     }
+  }
+
+  /**
+   * Host: commit an applied action — persist the authoritative snapshot first,
+   * then broadcast. Commits are chained so snapshot/broadcast order is always
+   * sequential; the snapshot is therefore a superset of every guest's mirror.
+   */
+  hostCommit(action, fromIdx, except = -1) {
+    // The chain never stays rejected: a failed commit must not stall later ones.
+    const run = () => this._doCommit(action, fromIdx, except).catch(() => {});
+    this._commitChain = this._commitChain.then(run, run);
+  }
+
+  async _doCommit(action, fromIdx, except = -1) {
+    if (this.phase !== 'playing' || !this.ctrl || this.role !== 'host') return;
+    this.actionCount += 1;
+    const h = stateHash(this.ctrl.game);
+    if (this.room && typeof this.room.writeSnapshot === 'function') {
+      await this.room.writeSnapshot(this.ctrl.game, h, this.actionCount);
+    }
+    this.room.broadcast(makeMsg(MSG.ACTION, { from: fromIdx, action, h }), except);
+    this.cb.onRender();
   }
 
   /** Host: a disconnected seat is immediately taken over by AI. */
@@ -504,10 +519,9 @@ export class NetSession {
       this.onHostGone();
       return;
     }
-    // Guest in lobby: host left.
+    // Guest in lobby: host left -> try to take over instead of killing the room.
     if (this.role === 'guest') {
-      this.cb.onNotice('📡 방장이 방을 나갔어요.');
-      this.end();
+      this.onHostGone();
       return;
     }
     if (this.role === 'host' && (this.phase === 'hostlobby' || this.phase === 'hostoffer')) {
@@ -523,18 +537,21 @@ export class NetSession {
     }
   }
 
-  /** Guest: host connection lost mid-game. Compete for the host lock, then promote. */
+  /** Guest: host connection lost (in game or lobby). Compete for the host lock, then promote. */
   async onHostGone() {
-    if (this.phase !== 'playing' || this.role !== 'guest' || this._promoting) return;
+    if (this.role !== 'guest' || this._promoting) return;
+    if (this.phase !== 'playing' && this.phase !== 'guestlobby') return;
     this._promoting = true;
-    this.cb.onNotice('📡 방장의 연결이 끊겼어요. 새 방장을 정하는 중...');
+    const inGame = this.phase === 'playing';
+    this.cb.onNotice(inGame ? '📡 방장의 연결이 끊겼어요. 새 방장을 정하는 중...' : '📡 방장이 나갔어요. 새 방장을 정하는 중...');
     this.cb.onRender();
     try {
       // Small jitter to reduce lock contention.
       await new Promise((r) => setTimeout(r, 500 + Math.random() * 1000));
-      if (this.phase !== 'playing' || this.role !== 'guest') return;
+      if (this.role !== 'guest') return;
+      if (this.phase !== 'playing' && this.phase !== 'guestlobby') return;
       if (typeof this.room.tryAcquireHostLock !== 'function') {
-        this.cb.onNotice('📡 방장의 연결이 끊겼어요. 대전이 종료됩니다.');
+        this.cb.onNotice('📡 방장의 연결이 끊겼어요. 방이 종료됩니다.');
         this.end();
         return;
       }
@@ -545,7 +562,7 @@ export class NetSession {
         this._watchForNewHost();
       }
     } catch {
-      this.cb.onNotice('📡 방장 승계에 실패했어요. 대전이 종료됩니다.');
+      this.cb.onNotice('📡 방장 승계에 실패했어요. 방이 종료됩니다.');
       this.end();
     } finally {
       this._promoting = false;
@@ -591,21 +608,57 @@ export class NetSession {
     this.end();
   }
 
-  /** Guest: promote to host. Old host's seat (index 0) becomes AI. */
+  /** Guest: promote to host. Old host's seat (index 0) becomes AI.
+   * In game: adopt the authoritative snapshot when the local mirror diverged,
+   * then broadcast a full SYNC so every guest aligns immediately.
+   * In lobby: keep the lobby alive under the same room code. */
   async promoteToHost() {
+    const inGame = this.phase === 'playing';
+    // Read the authoritative snapshot while still a guest (room flips isHost).
+    let snap = null;
+    if (inGame && this.ctrl) {
+      try {
+        snap = (this.room && typeof this.room.readSnapshot === 'function')
+          ? await this.room.readSnapshot()
+          : null;
+      } catch { /* fall back to the local mirror */ }
+    }
     this.role = 'host';
     const guestMap = await this.room.promoteToHost(this.myName);
     this.peerToPlayer = guestMap;
-    // The old host's seat is now AI-driven.
-    const oldHostIdx = 0;
-    this.aiTakeover[oldHostIdx] = true;
-    if (this.ctrl && this.ctrl.game.players[oldHostIdx]) {
-      this.ctrl.game.players[oldHostIdx].isAI = true;
+    if (inGame && this.ctrl) {
+      if (snap && snap.state && snap.h) {
+        // Keep the snapshot sequence monotonic even when the mirror is fine.
+        if (Number.isInteger(snap.n)) this.actionCount = Math.max(this.actionCount, snap.n);
+        if (snap.h !== stateHash(this.ctrl.game)) {
+          // My mirror diverged (missed the last broadcasts): adopt the snapshot,
+          // which is a superset of everything any guest has seen.
+          this.ctrl.game = snap.state;
+          // Re-derive AI-takeover seats from the authoritative flags.
+          const humanCount = (this.names || []).length;
+          this.aiTakeover = {};
+          this.ctrl.game.players.forEach((p, i) => {
+            if (p.isAI && i < humanCount) this.aiTakeover[i] = true;
+          });
+        }
+      }
+      // The old host's seat is now AI-driven.
+      const oldHostIdx = 0;
+      this.aiTakeover[oldHostIdx] = true;
+      if (this.ctrl.game.players[oldHostIdx]) {
+        this.ctrl.game.players[oldHostIdx].isAI = true;
+      }
+      this.resetTurnTimer();
+      this.startTurnTimer();
+      // Full-state SYNC: align every guest at once instead of piecemeal hash repair.
+      this.room.broadcast(makeMsg(MSG.SYNC, { state: this.ctrl.game }));
+      this.broadcastRoster();
+      this.cb.onNotice('📡 방장 연결이 끊겨 그 자리는 AI가 이어받고, 당신이 새 방장이 됐어요.');
+    } else {
+      if (this.phase === 'guestlobby') this.phase = 'hostlobby';
+      this.broadcastRoster();
+      this.cb.onNotice('📡 방장이 나가서 당신이 새 방장이 됐어요. 같은 코드로 이어서 진행하세요.');
     }
-    this.resetTurnTimer();
-    this.startTurnTimer();
-    this.broadcastRoster();
-    this.cb.onNotice('📡 방장 연결이 끊겨 그 자리는 AI가 이어받고, 당신이 새 방장이 됐어요.');
     this.cb.onRender();
   }
 
