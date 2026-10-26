@@ -449,11 +449,16 @@ export class NetSession {
         // Only auto-pass if it's a human's turn (AI acts on its own).
         const isAI = !!(this.ctrl.game.players[current] && this.ctrl.game.players[current].isAI);
         if (!isAI) {
+          const phaseBefore = this.ctrl.game.phase;
           const timeoutAction = { type: 'timeout' };
           const res = this.ctrl.applyRemote(timeoutAction);
           if (res.ok) {
             this.hostCommit(timeoutAction, current);
-            this.cb.onNotice(`⏰ ${this.names[current]}의 시간이 초과돼 자동으로 넘겼어요.`);
+            // Penalty is visible: in the action phase the player gains nothing.
+            const msg = phaseBefore === 'action'
+              ? `⏰ ${this.names[current]}의 시간이 초과돼 공도 못 고르고 차례를 넘겼어요.`
+              : `⏰ ${this.names[current]}의 시간이 초과돼 자동으로 넘겼어요.`;
+            this.cb.onNotice(msg);
           }
         }
         this.resetTurnTimer();

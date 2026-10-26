@@ -255,8 +255,11 @@ export function applyAction(state, action) {
     discard: PHASES.DISCARD,
     evolve: PHASES.EVOLVE, skipEvolve: PHASES.EVOLVE,
   };
-  if (!(action.type in phaseOf)) return fail('unknown_action');
-  if (phaseOf[action.type] !== s.phase) return fail('wrong_phase');
+  // timeout is phase-agnostic: doTimeout resolves it per current phase.
+  if (action.type !== 'timeout') {
+    if (!(action.type in phaseOf)) return fail('unknown_action');
+    if (phaseOf[action.type] !== s.phase) return fail('wrong_phase');
+  }
 
   let error = null;
   switch (action.type) {
@@ -385,10 +388,36 @@ function doPass(before, s, events) {
 }
 
 // Timeout: force-end the turn when the multiplayer turn timer expires.
-// Unlike pass, this is always legal — it just skips the player's turn.
+// Penalty: the timed-out player loses the current decision, nothing more.
+// - ACTION: the turn just passes — no balls picked, no card bought, no reserve.
+// - DISCARD: excess tokens are auto-discarded at random (state rng, so every
+//   client agrees), then the turn proceeds to evolve/end.
+// - EVOLVE: evolution is skipped, the turn passes.
 function doTimeout(s, events) {
+  const player = getCurrentPlayer(s);
   events.push({ type: 'timeout', player: s.current });
-  endTurn(s, events);
+  if (s.phase === PHASES.DISCARD) {
+    const need = tokenCount(player) - MAX_TOKENS;
+    if (need > 0) {
+      const pool = [];
+      for (const k of TOKEN_KEYS) for (let i = 0; i < player.tokens[k]; i++) pool.push(k);
+      shuffle(s, pool);
+      const tokens = {};
+      for (let i = 0; i < need; i++) {
+        const k = pool[i];
+        tokens[k] = (tokens[k] || 0) + 1;
+      }
+      for (const k of TOKEN_KEYS) {
+        const v = tokens[k] ?? 0;
+        player.tokens[k] -= v;
+        s.supply[k] += v;
+      }
+      events.push({ type: 'discard', player: s.current, tokens });
+    }
+    toEvolvePhase(s, events);
+  } else {
+    endTurn(s, events);
+  }
   return null;
 }
 
