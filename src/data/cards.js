@@ -85,7 +85,7 @@ export const CARDS = [
   { id: 't3-014', tier: 3, name: '라프라스', dex: 131, cost: { super: 1, quick: 6 }, bonus: 'heal', points: 3, evolvesTo: null, evolveReq: null },
   { id: 't3-015', tier: 3, name: '켄타로스', dex: 128, cost: { monster: 4, super: 4, heal: 3 }, bonus: 'quick', points: 5, evolvesTo: null, evolveReq: null },
   { id: 'rare-001', tier: 'rare', name: '샤미드', dex: 134, cost: { monster: 3, heal: 5 }, bonus: ['super', 'hyper'], points: 4, evolvesTo: null, evolveReq: null },
-  { id: 'rare-002', tier: 'rare', name: '쥬피썬더', dex: 135, cost: { hyper: 3, heal: 3 }, bonus: ['monster', 'super'], points: 3, evolvesTo: null, evolveReq: null },
+  { id: 'rare-002', tier: 'rare', name: '쥬피썬더', dex: 135, cost: { hyper: 3, heal: 4 }, bonus: ['monster', 'super'], points: 3, evolvesTo: null, evolveReq: null },
   { id: 'rare-003', tier: 'rare', name: '부스터', dex: 136, cost: { monster: 5, hyper: 3 }, bonus: ['heal', 'quick'], points: 3, evolvesTo: null, evolveReq: null },
   { id: 'rare-004', tier: 'rare', name: '프테라', dex: 142, cost: { monster: 3, quick: 4 }, bonus: ['hyper', 'heal'], points: 3, evolvesTo: null, evolveReq: null },
   { id: 'rare-005', tier: 'rare', name: '잠만보', dex: 143, cost: { super: 5, hyper: 4 }, bonus: ['quick', 'monster'], points: 4, evolvesTo: null, evolveReq: null },
