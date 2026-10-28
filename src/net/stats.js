@@ -6,25 +6,34 @@ const PID_RE = /^[A-Za-z0-9]{6,24}$/;
 
 export const cleanPid = (p) => (typeof p === 'string' && PID_RE.test(p) ? p : '');
 
-/** Host-side: one record for a finished multiplayer game. */
-export function buildMatch(game, names, pids, code, seed, now = Date.now()) {
-  const ranking = game.ranking || [];
-  const players = ranking.map((r) => {
+/**
+ * Per-seat result records for a finished multiplayer game. One record per human
+ * seat (id `${code}-${seed}-${seat}`), so every client can save its own result
+ * and the host can fill in the rest; the DB is write-once, so duplicates collapse.
+ * `onlySeat` limits output to one seat (guests save just themselves).
+ */
+export function buildResults(game, names, pids, code, seed, onlySeat = null, now = Date.now()) {
+  const humans = names.length;
+  const out = [];
+  for (const r of game.ranking || []) {
+    if (r.player >= humans) continue; // base AI seat
+    if (onlySeat !== null && r.player !== onlySeat) continue;
     const pid = cleanPid(pids[r.player]);
-    return {
-      pid: pid || null,
-      name: String(names[r.player] ?? game.players[r.player]?.name ?? '?').slice(0, 12),
-      ai: !pid,
-      rank: r.rank,
-      points: r.points,
-    };
-  });
-  return { id: `${code || 'X'}-${seed >>> 0}`, rec: { at: now, code: code || '', players } };
+    if (!pid) continue; // unknown device (old client): can't attribute
+    out.push({
+      id: `${code || 'X'}-${seed >>> 0}-${r.player}`,
+      rec: {
+        at: now, code: code || '', humans,
+        players: [{ pid, name: String(names[r.player] ?? '?').slice(0, 12), ai: false, rank: r.rank, points: r.points }],
+      },
+    });
+  }
+  return out;
 }
 
 /**
  * Aggregate stored matches -> [{ pid, name, games, wins, losses, rate, lastAt }].
- * A win is rank 1 among the game's players; AI seats are ignored. Keys starting
+ * A win is rank 1; AI seats and games with fewer than two people are ignored. Keys starting
  * with '_' are probes/test rows and are skipped.
  */
 export function aggregateStats(matches) {
@@ -35,7 +44,9 @@ export function aggregateStats(matches) {
     .sort((a, b) => a.at - b.at);
   for (const m of list) {
     const humans = m.players.filter((p) => p && !p.ai && cleanPid(p.pid));
-    if (humans.length < 2) continue; // need at least two friends for a real match
+    // Need at least two people in the game (per-seat records carry the count).
+    const people = Number.isInteger(m.humans) ? m.humans : humans.length;
+    if (people < 2) continue;
     for (const p of humans) {
       let r = rows.get(p.pid);
       if (!r) rows.set(p.pid, (r = { pid: p.pid, name: '', games: 0, wins: 0, losses: 0, rate: 0, lastAt: 0 }));

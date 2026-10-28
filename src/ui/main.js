@@ -2,7 +2,9 @@
 
 // Self-update: if a newer build is deployed, jump to the versioned URL so
 // browsers and home-screen web apps never sit on stale cached files.
-(async () => {
+// Also re-checked when the app comes back to the foreground (home-screen apps
+// resume without reloading), except mid multiplayer game.
+async function checkVersion() {
   try {
     const mine = window.__V;
     if (!mine) return;
@@ -10,10 +12,14 @@
     const { v } = await r.json();
     const param = new URLSearchParams(location.search).get('v');
     if (v && v !== mine && param !== String(v)) {
+      if (typeof net !== 'undefined' && net && net.phase === 'playing' && ctrl && !ctrl.finished) return;
       location.replace(location.pathname + '?v=' + v);
     }
   } catch { /* offline or first deploy: stay put */ }
-})();
+}
+checkVersion();
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkVersion(); });
+window.addEventListener('pageshow', (e) => { if (e.persisted) checkVersion(); });
 
 // In-app browser guard: KakaoTalk/etc. popups die when swiped away, killing
 // multiplayer. iOS can't force-open Safari from JS, so detect and guide.

@@ -5,7 +5,7 @@ import { CARDS } from '../data/cards.js';
 import { createController } from '../ui/controller.js';
 import { NetRoom } from './webrtc.js';
 import { FirebaseRoom, writeMatch } from './fireroom.js';
-import { buildMatch, cleanPid } from './stats.js';
+import { buildResults, cleanPid } from './stats.js';
 import { MSG, makeMsg, stateHash } from './protocol.js';
 
 const MAX_PLAYERS = 4;
@@ -394,12 +394,14 @@ export class NetSession {
         if (res.ok && stateHash(this.ctrl.game) !== m.h) {
           this.room.send(makeMsg(MSG.SYNC_REQ, {}));
         }
+        this.saveMatch();
         break;
       }
       case MSG.SYNC:
         if (this.ctrl) {
           this.ctrl.game = m.state;
           this.cb.onRender();
+          this.saveMatch();
         }
         break;
     }
@@ -562,13 +564,21 @@ export class NetSession {
     if (this.ctrl.finished) this.saveMatch();
   }
 
-  /** Host: store the finished game once for friend stats (write-once id per room+seed). */
+  /**
+   * Store this finished game for friend stats, once. Host writes every human seat
+   * (covers seats taken over by AI); guests write their own seat, so results are
+   * kept even when the host runs an old build. Ids are write-once per seat.
+   */
   saveMatch() {
     if (this._matchSaved || !this.ctrl || !this.ctrl.finished || !this.usePeer) return;
     this._matchSaved = true;
     const code = (this.room && this.room.code) || this.shortCode || this.lastCode || '';
-    const { id, rec } = buildMatch(this.ctrl.game, this.names, this.pids, code, this.seed);
-    Promise.resolve(this.writeMatch(id, rec)).catch(() => {});
+    const pids = [...(this.pids || [])];
+    if (this.myIndex >= 0 && this.myPid) pids[this.myIndex] = this.myPid;
+    const only = this.role === 'host' ? null : this.myIndex;
+    for (const { id, rec } of buildResults(this.ctrl.game, this.names, pids, code, this.seed, only)) {
+      Promise.resolve(this.writeMatch(id, rec)).catch(() => {});
+    }
   }
 
   /** Host: a disconnected seat is immediately taken over by AI. */
