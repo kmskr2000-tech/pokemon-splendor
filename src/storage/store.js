@@ -23,6 +23,22 @@ function writeJSON(storage, key, value) {
   try { storage.setItem(key, JSON.stringify(value)); return true; } catch { return false; }
 }
 
+// ---------- player id (multiplayer friend stats) ----------
+// Random per-device id: stats survive nickname changes on the same device.
+export const PID_KEY = 'pks-pid-v1';
+export function getPlayerId(storage) {
+  try {
+    const cur = storage?.getItem(PID_KEY);
+    if (cur && /^[A-Za-z0-9]{12}$/.test(cur)) return cur;
+    const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+    const buf = new Uint32Array(12);
+    globalThis.crypto.getRandomValues(buf);
+    const id = Array.from(buf, (x) => chars[x % chars.length]).join('');
+    storage?.setItem(PID_KEY, id);
+    return id;
+  } catch { return ''; }
+}
+
 const isObj = (x) => x !== null && typeof x === 'object' && !Array.isArray(x);
 
 // ---------- Pokedex ----------

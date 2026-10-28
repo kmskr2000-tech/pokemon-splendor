@@ -4,7 +4,8 @@
 import { CARDS } from '../data/cards.js';
 import { createController } from '../ui/controller.js';
 import { NetRoom } from './webrtc.js';
-import { FirebaseRoom } from './fireroom.js';
+import { FirebaseRoom, writeMatch } from './fireroom.js';
+import { buildMatch, cleanPid } from './stats.js';
 import { MSG, makeMsg, stateHash } from './protocol.js';
 
 const MAX_PLAYERS = 4;
@@ -18,6 +19,8 @@ export class NetSession {
   constructor(cb, opts = {}) {
     this.cb = cb;
     this.usePeer = opts.usePeer !== false;
+    this.myPid = cleanPid(opts.pid);
+    this.writeMatch = opts.writeMatch || writeMatch; // injectable for tests
     this.reset();
   }
 
@@ -44,6 +47,8 @@ export class NetSession {
     this.aiCount = 0; // host lobby: AI seats to add (0..4-humanCount)
     this.aiNames = [];
     this.ctrl = null;
+    this.pids = []; // seat -> per-device player id (friend stats)
+    this._matchSaved = false;
     this._emoteAt = {}; // seat -> last emote timestamp (cooldown)
     this.actionCount = 0; // host: applied actions (authoritative snapshot sequence)
     this._commitChain = Promise.resolve(); // host: ordered snapshot->broadcast chain
@@ -83,7 +88,7 @@ export class NetSession {
         // Guest: connection open -> introduce ourselves; host replies with welcome+roster.
         // Include rejoin seat if we have one for this room code.
         if (this.role === 'guest' && this.room) {
-          const hello = { name: this.myName };
+          const hello = { name: this.myName, pid: this.myPid };
           const rj = this.usePeer && this.lastCode ? this.loadRejoin(this.lastCode) : null;
           if (rj) hello.rejoin = rj.playerIndex;
           this.room.send(makeMsg(MSG.HELLO, hello));
@@ -96,7 +101,7 @@ export class NetSession {
         // Guest socket dropped and came back after the host already saw us leave:
         // re-send HELLO with our saved seat so the host hands it back from AI.
         if (this.role === 'guest' && this.room && this.phase === 'playing') {
-          const hello = { name: this.myName };
+          const hello = { name: this.myName, pid: this.myPid };
           const rj = this.usePeer && this.lastCode ? this.loadRejoin(this.lastCode) : null;
           if (rj) hello.rejoin = rj.playerIndex;
           this.room.send(makeMsg(MSG.HELLO, hello));
@@ -116,6 +121,7 @@ export class NetSession {
     this.myName = this.cleanName(name);
     this.turnLimitMs = turnLimitMs;
     this.names = [this.myName];
+    this.pids = [this.myPid];
     this.myIndex = 0;
     this.room = this.makeRoom();
     // Guest connections arrive via onMsg(hello) in both transports.
@@ -182,6 +188,7 @@ export class NetSession {
   broadcastRoster() {
     this.room.broadcast(makeMsg(MSG.ROSTER, {
       names: this.names,
+      pids: this.pids,
       aiTakeover: Object.keys(this.aiTakeover).map(Number),
     }));
   }
@@ -200,7 +207,7 @@ export class NetSession {
     const seed = (crypto.getRandomValues(new Uint32Array(1))[0] || 1);
     this.aiNames = this.pickAiNames();
     this.beginGame(seed, [...this.names], 0, this.aiNames);
-    this.room.broadcast(makeMsg(MSG.START, { seed, names: this.names, aiNames: this.aiNames, turnLimitMs: this.turnLimitMs }));
+    this.room.broadcast(makeMsg(MSG.START, { seed, names: this.names, pids: this.pids, aiNames: this.aiNames, turnLimitMs: this.turnLimitMs }));
     // Mark room as started so it disappears from lobby. Also write start info
     // as a fallback in case the broadcast message is missed.
     if (this.room && typeof this.room.markStarted === 'function') {
@@ -220,12 +227,13 @@ export class NetSession {
               this.ctrl.game.players[rIdx].isAI = false;
             }
             this.peerToPlayer[peerIdx] = rIdx;
+            if (cleanPid(m.pid)) this.pids[rIdx] = m.pid;
             if (this.room && typeof this.room.setGuestPlayerIndex === 'function') {
               this.room.setGuestPlayerIndex(peerIdx, rIdx);
             }
             this.room.sendTo(peerIdx, makeMsg(MSG.REJOIN_OK, {
               playerIndex: rIdx, seed: this.seed, names: this.names,
-              aiNames: this.aiNames, aiTakeover: Object.keys(this.aiTakeover).map(Number),
+              aiNames: this.aiNames, pids: this.pids, aiTakeover: Object.keys(this.aiTakeover).map(Number),
               state: this.ctrl.game,
             }));
             this.broadcastRoster();
@@ -239,6 +247,7 @@ export class NetSession {
         if (this.peerToPlayer[peerIdx] != null) return; // already joined
         const idx = this.names.length;
         this.names.push(this.cleanName(m.name));
+        this.pids[idx] = cleanPid(m.pid);
         this.peerToPlayer[peerIdx] = idx;
         if (this.room && typeof this.room.setGuestPlayerIndex === 'function') {
           this.room.setGuestPlayerIndex(peerIdx, idx);
@@ -340,6 +349,7 @@ export class NetSession {
         if (this.usePeer && this.lastCode) this.saveRejoin(this.lastCode, m.playerIndex);
         break;
       case MSG.REJOIN_OK:
+        if (Array.isArray(m.pids)) this.pids = m.pids;
         // Rejoin accepted: rebuild at the given seat, then take the live state.
         this.beginGame(m.seed, m.names, m.playerIndex, m.aiNames || []);
         this.ctrl.game = m.state;
@@ -358,6 +368,7 @@ export class NetSession {
         break;
       case MSG.ROSTER:
         this.names = m.names;
+        if (Array.isArray(m.pids)) this.pids = m.pids;
         // Sync AI-takeover seats (host converts disconnected seats to AI).
         if (this.ctrl && Array.isArray(m.aiTakeover)) {
           const take = new Set(m.aiTakeover);
@@ -372,6 +383,7 @@ export class NetSession {
         this.cb.onRender();
         break;
       case MSG.START:
+        if (Array.isArray(m.pids)) this.pids = m.pids;
         if (m.turnLimitMs) this.turnLimitMs = m.turnLimitMs;
         this.beginGame(m.seed, m.names, this.myIndex, m.aiNames || []);
         break;
@@ -461,6 +473,7 @@ export class NetSession {
     this.aiNames = aiNames;
     this.myIndex = myIndex;
     this.phase = 'playing';
+    this._matchSaved = false;
     this.actionCount = 0;
     this._commitChain = Promise.resolve();
     this.resetTurnTimer();
@@ -546,6 +559,16 @@ export class NetSession {
     }
     this.room.broadcast(makeMsg(MSG.ACTION, { from: fromIdx, action, h }), except);
     this.cb.onRender();
+    if (this.ctrl.finished) this.saveMatch();
+  }
+
+  /** Host: store the finished game once for friend stats (write-once id per room+seed). */
+  saveMatch() {
+    if (this._matchSaved || !this.ctrl || !this.ctrl.finished || !this.usePeer) return;
+    this._matchSaved = true;
+    const code = (this.room && this.room.code) || this.shortCode || this.lastCode || '';
+    const { id, rec } = buildMatch(this.ctrl.game, this.names, this.pids, code, this.seed);
+    Promise.resolve(this.writeMatch(id, rec)).catch(() => {});
   }
 
   /** Host: a disconnected seat is immediately taken over by AI. */

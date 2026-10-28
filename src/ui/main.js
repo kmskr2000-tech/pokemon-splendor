@@ -47,11 +47,12 @@ import { CHALLENGES, challengeWon } from '../data/challenges.js';
 import { createController } from './controller.js';
 import * as V from './view.js';
 import { NetSession, EMOTES } from '../net/session.js';
-import { listRooms, watchRooms } from '../net/fireroom.js';
+import { listRooms, watchRooms, loadMatches } from '../net/fireroom.js';
+import { aggregateStats } from '../net/stats.js';
 import { getBonuses, getPoints, bonusList } from '../core/engine.js';
 import { startBGM, stopBGM, unlockAudio } from '../audio/bgm.js';
 import { sfx, setSFXEnabled } from '../audio/sfx.js';
-import { browserStorage, loadDex, loadSave, saveGame, clearSave, recordCatch, recordGame, loadOptions, saveOptions, loadAchv, unlockAchv, loadRecords, recordResult, victoryScore, loadChal, completeChal } from '../storage/store.js';
+import { browserStorage, loadDex, loadSave, saveGame, clearSave, recordCatch, recordGame, loadOptions, saveOptions, loadAchv, unlockAchv, loadRecords, recordResult, victoryScore, loadChal, completeChal, getPlayerId } from '../storage/store.js';
 import { createTurnAlerter } from './turn-alert.js';
 
 const params = new URLSearchParams(location.search);
@@ -77,6 +78,7 @@ let aiTimer = null;
 let net = null; // NetSession while in multiplayer menu/lobby/game
 let netNotice = ''; // one-shot notice shown on the start/net screen
 let netHelpOpen = false;
+let friendStats = null; // { loading, error, rows, myPid } while the friend-stats overlay is open
 let dexOpen = false;
 let dexDetail = null;
 let rulesOpen = false;
@@ -132,7 +134,9 @@ function render() {
 
   if (ctrl) for (const [id, fn] of Object.values(regions)) setHTML(id, fn(ctrl));
   let overlay;
-  if (netHelpOpen && net) {
+  if (friendStats && net && !ctrl) {
+    overlay = V.friendStatsHTML(friendStats);
+  } else if (netHelpOpen && net) {
     overlay = V.netHelpHTML();
   } else if (net && !ctrl) {
     overlay = V.netHTML(net, netNotice);
@@ -367,7 +371,7 @@ function openNet() {
     onGameEnd: () => { stopLobbyWatch(); stopTimerUpdater(); net = null; ctrl = null; render(); },
     onNotice: (msg) => { netNotice = msg; render(); },
     onEmote: showEmote,
-  });
+  }, { pid: getPlayerId(storage) });
   net.myName = options.playerName || ''; // pre-fill saved name
   net.roomList = [];
   refreshLobby();
@@ -413,6 +417,15 @@ function showEmote({ name, k }) {
   box.appendChild(el);
   while (box.children.length > 3) box.removeChild(box.firstChild);
   setTimeout(() => el.remove(), EMOTE_SHOW_MS);
+}
+
+function openFriendStats() {
+  const myPid = getPlayerId(storage);
+  friendStats = { loading: true, error: false, rows: [], myPid };
+  loadMatches()
+    .then((m) => { if (friendStats) friendStats = { loading: false, error: false, rows: aggregateStats(m), myPid }; })
+    .catch(() => { if (friendStats) friendStats = { loading: false, error: true, rows: [], myPid }; })
+    .finally(() => render());
 }
 
 let emoteBarOn = false;
@@ -553,6 +566,8 @@ document.addEventListener('click', (e) => {
       netNotice = '';
     } break;
     case 'net-help': netHelpOpen = true; break;
+    case 'net-stats': case 'net-stats-refresh': openFriendStats(); break;
+    case 'net-stats-close': friendStats = null; break;
     case 'net-help-close': netHelpOpen = false; break;
     case 'net-timelimit': if (net) {
       const ms = Number(d.ms);
@@ -608,7 +623,7 @@ document.addEventListener('click', (e) => {
       if (t) { t.select(); try { navigator.clipboard.writeText(t.value); netNotice = '복사됐어요.'; } catch { netNotice = '복사가 안 되면 직접 드래그해서 복사해주세요.'; } }
       break;
     }
-    case 'net-leave': if (net) { netHelpOpen = false; net.end(); return; } break;
+    case 'net-leave': if (net) { netHelpOpen = false; friendStats = null; net.end(); return; } break;
     case 'tut-next': tutAdvance(); return;
     case 'tut-done': tutorial = null; break;
     case 'tut-skip': tutorial = null; break;

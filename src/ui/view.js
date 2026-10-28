@@ -635,6 +635,26 @@ export function challengeEndHTML(won, challenge) {
 
 // ---------- multiplayer rejoin ----------
 
+// Friend stats (multiplayer). st: { loading, error, rows, myPid }
+export function friendStatsHTML(st) {
+  let body;
+  if (st.loading) body = '<p class="sheet-p">불러오는 중…</p>';
+  else if (st.error) body = '<p class="sheet-p">전적을 불러오지 못했어요. 잠시 후 다시 시도해주세요.</p>';
+  else if (!st.rows.length) body = '<p class="sheet-p">아직 기록된 대전이 없어요.<br><small>친구와 멀티 게임을 끝까지 하면 쌓여요.</small></p>';
+  else {
+    const fmt = (t) => { const d = new Date(t); return `${d.getMonth() + 1}/${d.getDate()}`; };
+    const rows = st.rows.map((r, i) => `<tr class="${r.pid === st.myPid ? 'me' : ''}"><td>${i + 1}</td><td>${esc(r.name)}${r.pid === st.myPid ? ' (나)' : ''}</td><td>${r.wins}</td><td>${r.losses}</td><td>${r.rate}%</td><td>${fmt(r.lastAt)}</td></tr>`).join('');
+    body = `<table class="rank"><tr><th></th><th>이름</th><th>승</th><th>패</th><th>승률</th><th>최근</th></tr>${rows}</table>
+      <p class="sheet-p"><small>1등만 승리. AI 좌석과, 사람 1명 + AI만 있던 판은 제외.</small></p>`;
+  }
+  return `<div class="overlay"><div class="panel">
+    <div class="title big">🏆 친구 전적</div>
+    ${body}
+    <div class="btnrow"><button class="btn ghost" data-action="net-stats-refresh">🔄 새로고침</button>
+    <button class="btn primary" data-action="net-stats-close">닫기</button></div>
+  </div></div>`;
+}
+
 export function netHelpHTML() {
   return `<div class="overlay"><div class="panel netpanel">
     <div class="title">📡 대전 방법</div>
@@ -682,7 +702,8 @@ export function netHTML(net, notice = '') {
         <button class="btn ghost" data-action="net-lobby-refresh">🔄 새로고침</button></div>
         <div class="btnrow">${modeBtn}
         <button class="btn ghost" data-action="net-help">❓ 대전 방법</button></div>
-        <div class="btnrow"><button class="btn ghost" data-action="net-leave">닫기</button></div>`;
+        <div class="btnrow"><button class="btn alt" data-action="net-stats">🏆 친구 전적</button>
+        <button class="btn ghost" data-action="net-leave">닫기</button></div>`;
       break;
     }
     case 'hostname': {

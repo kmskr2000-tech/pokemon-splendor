@@ -20,6 +20,7 @@ import { parseMsg } from './protocol.js';
 
 const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // no confusing 0/O/1/I
 const ROOMS_PATH = 'pkmspl-rooms';
+const MATCHES_PATH = 'pkmspl-matches'; // write-once friend match records (see stats.js)
 
 // Presence: heartbeat every HB_INTERVAL_MS; a peer is considered gone when its
 // last heartbeat is older than HB_TIMEOUT_MS (host) / HOST_STALE_MS (guests
@@ -63,6 +64,17 @@ function getDb() {
   }
   _db = fb.database();
   return _db;
+}
+
+/** Write one finished-match record (write-once in DB rules; duplicates fail silently). */
+export async function writeMatch(id, rec) {
+  try { await getDb().ref(`${MATCHES_PATH}/${id}`).set(rec); return true; } catch { return false; }
+}
+
+/** Read all match records ({ id: rec }). */
+export async function loadMatches() {
+  const snap = await getDb().ref(MATCHES_PATH).once('value');
+  return snap.val() || {};
 }
 
 /** List available rooms for the lobby. Returns [{code, title, hostName, playerCount, created}]. */
