@@ -89,7 +89,7 @@ export const CARDS = [
   { id: 'rare-003', tier: 'rare', name: '부스터', dex: 136, cost: { monster: 5, hyper: 3 }, bonus: ['heal', 'quick'], points: 3, evolvesTo: null, evolveReq: null },
   { id: 'rare-004', tier: 'rare', name: '프테라', dex: 142, cost: { monster: 3, quick: 4 }, bonus: ['hyper', 'heal'], points: 3, evolvesTo: null, evolveReq: null },
   { id: 'rare-005', tier: 'rare', name: '잠만보', dex: 143, cost: { super: 5, hyper: 4 }, bonus: ['quick', 'monster'], points: 4, evolvesTo: null, evolveReq: null },
-  { id: 'legend-001', tier: 'legend', name: '프리져', dex: 144, cost: { monster: 2, hyper: 4, heal: 2 }, bonus: ['quick', 'super'], points: 4, evolvesTo: null, evolveReq: null },
+  { id: 'legend-001', tier: 'legend', name: '프리져', dex: 144, cost: { monster: 2, hyper: 5, heal: 2 }, bonus: ['quick', 'super'], points: 4, evolvesTo: null, evolveReq: null },
   { id: 'legend-002', tier: 'legend', name: '썬더', dex: 145, cost: { super: 5, hyper: 3, quick: 3 }, bonus: ['heal', 'monster'], points: 5, evolvesTo: null, evolveReq: null },
   { id: 'legend-003', tier: 'legend', name: '파이어', dex: 146, cost: { super: 4, heal: 3, quick: 3 }, bonus: ['monster', 'hyper'], points: 5, evolvesTo: null, evolveReq: null },
   { id: 'legend-004', tier: 'legend', name: '뮤츠', dex: 150, cost: { monster: 3, hyper: 4, quick: 5 }, bonus: ['super', 'heal'], points: 6, evolvesTo: null, evolveReq: null },
