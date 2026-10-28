@@ -14,6 +14,7 @@ export const cleanPid = (p) => (typeof p === 'string' && PID_RE.test(p) ? p : ''
  */
 export function buildResults(game, names, pids, code, seed, onlySeat = null, now = Date.now()) {
   const humans = names.length;
+  const top = (game.ranking || []).filter((r) => r.rank === 1).length; // >1 = shared 1st (draw)
   const out = [];
   for (const r of game.ranking || []) {
     if (r.player >= humans) continue; // base AI seat
@@ -23,7 +24,7 @@ export function buildResults(game, names, pids, code, seed, onlySeat = null, now
     out.push({
       id: `${code || 'X'}-${seed >>> 0}-${r.player}`,
       rec: {
-        at: now, code: code || '', humans,
+        at: now, code: code || '', humans, top,
         players: [{ pid, name: String(names[r.player] ?? '?').slice(0, 12), ai: false, rank: r.rank, points: r.points }],
       },
     });
@@ -32,27 +33,37 @@ export function buildResults(game, names, pids, code, seed, onlySeat = null, now
 }
 
 /**
- * Aggregate stored matches -> [{ pid, name, games, wins, losses, rate, lastAt }].
- * A win is rank 1; AI seats and games with fewer than two people are ignored. Keys starting
- * with '_' are probes/test rows and are skipped.
+ * Aggregate stored matches -> [{ pid, name, games, wins, draws, losses, rate, lastAt }].
+ * Rank 1 alone = win, shared rank 1 = draw, otherwise loss. AI seats and games
+ * with fewer than two people are ignored. Keys starting with '_' are probes.
+ * Shared 1st is read from the record's `top` count; for older per-seat records
+ * without it, rank-1 seats of the same game (id `${code}-${seed}-${seat}`) are counted.
  */
 export function aggregateStats(matches) {
+  const entries = Object.entries(matches || {})
+    .filter(([k, m]) => !k.startsWith('_') && m && Array.isArray(m.players) && Number.isFinite(m.at));
+  const gameOf = (k) => (/^.+-\d+-\d+$/.test(k) ? k.replace(/-\d+$/, '') : k);
+  const firsts = new Map(); // game -> rank-1 human seats seen
+  for (const [k, m] of entries) {
+    const n = m.players.filter((p) => p && p.rank === 1).length;
+    firsts.set(gameOf(k), (firsts.get(gameOf(k)) || 0) + n);
+  }
   const rows = new Map();
-  const list = Object.entries(matches || {})
-    .filter(([k, m]) => !k.startsWith('_') && m && Array.isArray(m.players) && Number.isFinite(m.at))
-    .map(([, m]) => m)
-    .sort((a, b) => a.at - b.at);
-  for (const m of list) {
+  entries.sort((a, b) => a[1].at - b[1].at);
+  for (const [k, m] of entries) {
     const humans = m.players.filter((p) => p && !p.ai && cleanPid(p.pid));
     // Need at least two people in the game (per-seat records carry the count).
     const people = Number.isInteger(m.humans) ? m.humans : humans.length;
     if (people < 2) continue;
+    const shared = (Number.isInteger(m.top) ? m.top : firsts.get(gameOf(k)) || 0) > 1;
     for (const p of humans) {
       let r = rows.get(p.pid);
-      if (!r) rows.set(p.pid, (r = { pid: p.pid, name: '', games: 0, wins: 0, losses: 0, rate: 0, lastAt: 0 }));
+      if (!r) rows.set(p.pid, (r = { pid: p.pid, name: '', games: 0, wins: 0, draws: 0, losses: 0, rate: 0, lastAt: 0 }));
       r.name = p.name || r.name; // latest name wins (list is oldest -> newest)
       r.games += 1;
-      if (p.rank === 1) r.wins += 1; else r.losses += 1;
+      if (p.rank !== 1) r.losses += 1;
+      else if (shared) r.draws += 1;
+      else r.wins += 1;
       r.lastAt = m.at;
     }
   }

@@ -643,9 +643,9 @@ export function friendStatsHTML(st) {
   else if (!st.rows.length) body = '<p class="sheet-p">아직 기록된 대전이 없어요.<br><small>친구와 멀티 게임을 끝까지 하면 쌓여요.</small></p>';
   else {
     const fmt = (t) => { const d = new Date(t); return `${d.getMonth() + 1}/${d.getDate()}`; };
-    const rows = st.rows.map((r, i) => `<tr class="${r.pid === st.myPid ? 'me' : ''}"><td>${i + 1}</td><td>${esc(r.name)}${r.pid === st.myPid ? ' (나)' : ''}</td><td>${r.wins}</td><td>${r.losses}</td><td>${r.rate}%</td><td>${fmt(r.lastAt)}</td></tr>`).join('');
-    body = `<table class="rank"><tr><th></th><th>이름</th><th>승</th><th>패</th><th>승률</th><th>최근</th></tr>${rows}</table>
-      <p class="sheet-p"><small>1등만 승리. AI 좌석과, 사람 1명 + AI만 있던 판은 제외.</small></p>`;
+    const rows = st.rows.map((r, i) => `<tr class="${r.pid === st.myPid ? 'me' : ''}"><td>${i + 1}</td><td>${esc(r.name)}${r.pid === st.myPid ? ' (나)' : ''}</td><td>${r.wins}</td><td>${r.draws}</td><td>${r.losses}</td><td>${r.rate}%</td><td>${fmt(r.lastAt)}</td></tr>`).join('');
+    body = `<table class="rank"><tr><th></th><th>이름</th><th>승</th><th>무</th><th>패</th><th>승률</th><th>최근</th></tr>${rows}</table>
+      <p class="sheet-p"><small>단독 1등만 승리, 공동 1등은 무승부. AI 좌석과, 사람 1명 + AI만 있던 판은 제외.</small></p>`;
   }
   return `<div class="overlay"><div class="panel">
     <div class="title big">🏆 친구 전적</div>
