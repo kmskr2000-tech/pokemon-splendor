@@ -46,7 +46,7 @@ import { ACHIEVEMENTS, checkAchievements } from '../data/achievements.js';
 import { CHALLENGES, challengeWon } from '../data/challenges.js';
 import { createController } from './controller.js';
 import * as V from './view.js';
-import { NetSession } from '../net/session.js';
+import { NetSession, EMOTES } from '../net/session.js';
 import { listRooms, watchRooms } from '../net/fireroom.js';
 import { getBonuses, getPoints, bonusList } from '../core/engine.js';
 import { startBGM, stopBGM, unlockAudio } from '../audio/bgm.js';
@@ -149,6 +149,7 @@ function render() {
   else if (chalOpen) overlay = V.challengeListHTML(loadChal(storage).completed);
   else if (optionsOpen) overlay = V.optionsHTML(options);
   setHTML('overlay', overlay);
+  syncEmoteBar();
   scheduleAI();
 }
 
@@ -365,6 +366,7 @@ function openNet() {
     },
     onGameEnd: () => { stopLobbyWatch(); stopTimerUpdater(); net = null; ctrl = null; render(); },
     onNotice: (msg) => { netNotice = msg; render(); },
+    onEmote: showEmote,
   });
   net.myName = options.playerName || ''; // pre-fill saved name
   net.roomList = [];
@@ -395,6 +397,33 @@ function refreshLobby() {
 
 function stopLobbyWatch() {
   if (_lobbyUnwatch) { try { _lobbyUnwatch(); } catch {} _lobbyUnwatch = null; }
+}
+
+// ---------- emoticons (multiplayer only; never part of game state/log/save) ----------
+
+const EMOTE_SHOW_MS = 2500;
+const esc2 = (t) => String(t).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+function showEmote({ name, k }) {
+  const box = document.getElementById('emotetoast');
+  if (!box) return;
+  const el = document.createElement('div');
+  el.className = 'emote-bubble';
+  el.innerHTML = `${esc2(name)}<b>${esc2(k)}</b>`;
+  box.appendChild(el);
+  while (box.children.length > 3) box.removeChild(box.firstChild);
+  setTimeout(() => el.remove(), EMOTE_SHOW_MS);
+}
+
+let emoteBarOn = false;
+function syncEmoteBar() {
+  const bar = document.getElementById('emotebar');
+  if (!bar) return;
+  const on = !!(net && ctrl && ctrl.mp && !ctrl.finished && net.phase === 'playing');
+  if (on === emoteBarOn) return;
+  emoteBarOn = on;
+  bar.hidden = !on;
+  bar.innerHTML = on ? EMOTES.map((k) => `<button data-action="emote" data-k="${k}" aria-label="이모티콘 ${k}">${k}</button>`).join('') : '';
 }
 
 let _timerUpdater = null;
@@ -437,6 +466,7 @@ document.addEventListener('click', (e) => {
   if (options.bgm && !ctrl) startBGM('calm');
   const d = el.dataset;
   switch (d.action) {
+    case 'emote': if (net) net.sendEmote(d.k); return;
     case 'start': startGame(d.name); return;
     case 'resume': resumeGame(); return;
     case 'dex': dexOpen = true; dexDetail = null; break;

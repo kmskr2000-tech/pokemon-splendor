@@ -10,6 +10,7 @@ export const MSG = {
   SYNC_REQ: 'sync-req',// G->H {} hash mismatch
   SYNC: 'sync',        // H->G {state} full state resync
   REJOIN_OK: 'rejoin-ok', // H->G {playerIndex, seed, names, state} rejoin accepted
+  EMOTE: 'emote', // both ways {k, from?} state-less emoticon relay (never touches game state/hash)
   PING: 'ping',        // both ways {t}
   PONG: 'pong',        // both ways {t}
   BYE: 'bye',          // both ways {}

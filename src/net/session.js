@@ -8,6 +8,8 @@ import { FirebaseRoom } from './fireroom.js';
 import { MSG, makeMsg, stateHash } from './protocol.js';
 
 const MAX_PLAYERS = 4;
+export const EMOTES = ['😂', '🖕', '⏰'];
+const EMOTE_COOLDOWN_MS = 2500;
 const DEFAULT_TURN_LIMIT_MS = 45 * 1000; // 45 seconds per turn
 
 export class NetSession {
@@ -42,6 +44,7 @@ export class NetSession {
     this.aiCount = 0; // host lobby: AI seats to add (0..4-humanCount)
     this.aiNames = [];
     this.ctrl = null;
+    this._emoteAt = {}; // seat -> last emote timestamp (cooldown)
     this.actionCount = 0; // host: applied actions (authoritative snapshot sequence)
     this._commitChain = Promise.resolve(); // host: ordered snapshot->broadcast chain
   }
@@ -247,6 +250,14 @@ export class NetSession {
         this.cb.onRender();
         break;
       }
+      case MSG.EMOTE: {
+        // Stateless relay: sender seat comes from the transport, never from the payload.
+        const seat = this.peerToPlayer[peerIdx];
+        if (!this._emoteOk(seat, m.k)) return;
+        this.room.broadcast(makeMsg(MSG.EMOTE, { from: seat, k: m.k }), peerIdx);
+        this._showEmote(seat, m.k);
+        break;
+      }
       case MSG.ACTION: {
         if (this.phase !== 'playing' || !this.ctrl) return;
         const res = this.ctrl.applyRemote(m.action);
@@ -319,6 +330,11 @@ export class NetSession {
 
   guestMsg(m) {
     switch (m.t) {
+      case MSG.EMOTE:
+        if (this.phase === 'playing' && Number.isInteger(m.from) && EMOTES.includes(m.k) && m.from !== this.myIndex) {
+          this._showEmote(m.from, m.k);
+        }
+        break;
       case MSG.WELCOME:
         this.myIndex = m.playerIndex;
         if (this.usePeer && this.lastCode) this.saveRejoin(this.lastCode, m.playerIndex);
@@ -375,6 +391,32 @@ export class NetSession {
         }
         break;
     }
+  }
+
+  // ---------- emoticons (stateless: no ACTION, no hash, no log/save) ----------
+
+  _emoteOk(seat, k) {
+    if (this.phase !== 'playing' || !this.ctrl) return false;
+    if (!Number.isInteger(seat) || !EMOTES.includes(k)) return false;
+    const pl = this.ctrl.game.players[seat];
+    if (!pl || pl.isAI || this.aiTakeover[seat]) return false;
+    const now = Date.now();
+    if (now - (this._emoteAt[seat] || 0) < EMOTE_COOLDOWN_MS) return false;
+    this._emoteAt[seat] = now;
+    return true;
+  }
+
+  _showEmote(seat, k) {
+    if (this.cb.onEmote) this.cb.onEmote({ from: seat, name: this.names[seat] || '', k });
+  }
+
+  /** Local player sends an emoticon. Returns true when sent. */
+  sendEmote(k) {
+    if (!this._emoteOk(this.myIndex, k)) return false;
+    if (this.role === 'host') this.room.broadcast(makeMsg(MSG.EMOTE, { from: this.myIndex, k }));
+    else this.room.send(makeMsg(MSG.EMOTE, { k }));
+    this._showEmote(this.myIndex, k);
+    return true;
   }
 
   // ---------- shared ----------
