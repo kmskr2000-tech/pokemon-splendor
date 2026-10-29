@@ -9,7 +9,7 @@ import { buildResults, cleanPid } from './stats.js';
 import { MSG, makeMsg, stateHash } from './protocol.js';
 
 const MAX_PLAYERS = 4;
-export const EMOTES = ['😂', '🖕', '⏰'];
+export const EMOTES = ['😂', '🖕', '⏰', '중국인', '한국인'];
 const EMOTE_COOLDOWN_MS = 2500;
 // Host waits this long past the shown deadline before forcing a timeout, so an
 // action sent at the last second (Firebase relay ~1-2s) still counts.

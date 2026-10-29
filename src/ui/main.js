@@ -54,7 +54,7 @@ import { createController } from './controller.js';
 import * as V from './view.js';
 import { NetSession, EMOTES } from '../net/session.js';
 import { listRooms, watchRooms, loadMatches } from '../net/fireroom.js';
-import { aggregateStats, duelStats } from '../net/stats.js';
+import { aggregateStats, duelPairs } from '../net/stats.js';
 import { getBonuses, getPoints, bonusList } from '../core/engine.js';
 import { startBGM, stopBGM, unlockAudio } from '../audio/bgm.js';
 import { sfx, setSFXEnabled } from '../audio/sfx.js';
@@ -414,12 +414,12 @@ function stopLobbyWatch() {
 const EMOTE_SHOW_MS = 2500;
 const esc2 = (t) => String(t).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-function showEmote({ name, k }) {
+function showEmote({ k }) {
   const box = document.getElementById('emotetoast');
   if (!box) return;
   const el = document.createElement('div');
   el.className = 'emote-bubble';
-  el.innerHTML = `${esc2(name)}<b>${esc2(k)}</b>`;
+  el.textContent = k; // emote only, no sender name (kept short)
   box.appendChild(el);
   while (box.children.length > 3) box.removeChild(box.firstChild);
   setTimeout(() => el.remove(), EMOTE_SHOW_MS);
@@ -430,7 +430,7 @@ function openFriendStats() {
   const tab = friendStats?.tab || 'all';
   friendStats = { loading: true, error: false, rows: [], duel: [], tab, myPid };
   loadMatches()
-    .then((m) => { if (friendStats) friendStats = { loading: false, error: false, rows: aggregateStats(m), duel: duelStats(m, myPid), tab: friendStats.tab, myPid }; })
+    .then((m) => { if (friendStats) friendStats = { loading: false, error: false, rows: aggregateStats(m), duel: duelPairs(m, myPid), tab: friendStats.tab, myPid }; })
     .catch(() => { if (friendStats) friendStats = { loading: false, error: true, rows: [], duel: [], tab: friendStats.tab, myPid }; })
     .finally(() => render());
 }
@@ -443,7 +443,9 @@ function syncEmoteBar() {
   if (on === emoteBarOn) return;
   emoteBarOn = on;
   bar.hidden = !on;
-  bar.innerHTML = on ? EMOTES.map((k) => `<button data-action="emote" data-k="${k}" aria-label="이모티콘 ${k}">${k}</button>`).join('') : '';
+  // Text emotes (e.g. '중국인') get a wider, smaller-font button than emoji ones.
+  const isText = (k) => /^[\p{L}\p{N}]+$/u.test(k);
+  bar.innerHTML = on ? EMOTES.map((k) => `<button class="${isText(k) ? 'txt' : ''}" data-action="emote" data-k="${k}" aria-label="이모티콘 ${k}">${k}</button>`).join('') : '';
 }
 
 let _timerUpdater = null;

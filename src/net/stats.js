@@ -76,14 +76,13 @@ export function aggregateStats(matches) {
 }
 
 /**
- * Duel (1:1) record of `myPid` against each opponent:
- * [{ pid, name, games, wins, draws, losses, rate, lastAt }] (wins/draws/losses are mine).
+ * Duel (1:1) records for every pair of friends, visible to anyone:
+ * [{ a: {pid, name}, b: {pid, name}, games, aWins, draws, bWins, lastAt }].
  * A duel is a game with exactly two people and no AI seats (`seats` == 2; older
- * records without `seats` are assumed AI-free). Both seats must be stored to know
- * the opponent.
+ * records without `seats` are assumed AI-free). Both seats must be stored.
+ * Pairs that include `myPid` come first with me as `a`; others by games played.
  */
-export function duelStats(matches, myPid) {
-  if (!cleanPid(myPid)) return [];
+export function duelPairs(matches, myPid = '') {
   const games = new Map(); // game id -> { at, people, seats, players: Map(pid -> player) }
   for (const [k, m] of Object.entries(matches || {})) {
     if (k.startsWith('_') || !m || !Array.isArray(m.players) || !Number.isFinite(m.at)) continue;
@@ -95,25 +94,24 @@ export function duelStats(matches, myPid) {
     if (Number.isInteger(m.seats)) g.seats = m.seats;
     for (const p of m.players) if (p && !p.ai && cleanPid(p.pid)) g.players.set(p.pid, p);
   }
-  const rows = new Map();
-  const list = [...games.values()].sort((a, b) => a.at - b.at);
+  const pairs = new Map();
+  const list = [...games.values()].sort((x, y) => x.at - y.at);
   for (const g of list) {
     const people = Number.isInteger(g.people) ? g.people : g.players.size;
-    if (people !== 2 || (Number.isInteger(g.seats) && g.seats !== 2)) continue;
-    if (g.players.size !== 2 || !g.players.has(myPid)) continue;
-    const me = g.players.get(myPid);
-    const opp = [...g.players.values()].find((p) => p.pid !== myPid);
-    let r = rows.get(opp.pid);
-    if (!r) rows.set(opp.pid, (r = { pid: opp.pid, name: '', games: 0, wins: 0, draws: 0, losses: 0, rate: 0, lastAt: 0 }));
-    r.name = opp.name || r.name;
+    if (people !== 2 || (Number.isInteger(g.seats) && g.seats !== 2) || g.players.size !== 2) continue;
+    let [p, q] = [...g.players.values()];
+    if (q.pid === myPid || (p.pid !== myPid && q.pid < p.pid)) [p, q] = [q, p]; // stable side: me first, else pid order
+    const key = `${p.pid}|${q.pid}`;
+    let r = pairs.get(key);
+    if (!r) pairs.set(key, (r = { a: { pid: p.pid, name: '' }, b: { pid: q.pid, name: '' }, games: 0, aWins: 0, draws: 0, bWins: 0, lastAt: 0 }));
+    r.a.name = p.name || r.a.name; // latest names
+    r.b.name = q.name || r.b.name;
     r.games += 1;
-    if (me.rank === 1 && opp.rank === 1) r.draws += 1;
-    else if (me.rank === 1) r.wins += 1;
-    else r.losses += 1;
+    if (p.rank === 1 && q.rank === 1) r.draws += 1;
+    else if (p.rank === 1) r.aWins += 1;
+    else r.bWins += 1;
     r.lastAt = g.at;
   }
-  const out = [...rows.values()];
-  out.forEach((r) => { r.rate = r.games ? Math.round((r.wins / r.games) * 100) : 0; });
-  out.sort((a, b) => b.games - a.games || b.lastAt - a.lastAt);
-  return out;
+  const mine = (r) => (myPid && r.a.pid === myPid ? 1 : 0);
+  return [...pairs.values()].sort((x, y) => mine(y) - mine(x) || y.games - x.games || y.lastAt - x.lastAt);
 }

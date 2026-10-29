@@ -651,11 +651,12 @@ export function friendStatsHTML(st) {
     }
   } else {
     const duel = st.duel || [];
-    if (!duel.length) body = '<p class="sheet-p">아직 1:1 대결 기록이 없어요.<br><small>AI 없이 친구와 둘이서 끝까지 한 판이 쌓여요.</small></p>';
+    if (!duel.length) body = '<p class="sheet-p">아직 1:1 대결 기록이 없어요.<br><small>AI 없이 둘이서 끝까지 한 판이 쌓여요.</small></p>';
     else {
-      const rows = duel.map((r) => `<tr><td>${esc(r.name)}</td><td>${r.wins}</td><td>${r.draws}</td><td>${r.losses}</td><td>${r.rate}%</td><td>${fmt(r.lastAt)}</td></tr>`).join('');
-      body = `<table class="rank"><tr><th>상대</th><th>승</th><th>무</th><th>패</th><th>승률</th><th>최근</th></tr>${rows}</table>
-      <p class="sheet-p"><small>나 기준 상대별 1:1 전적. AI 없이 둘이서 한 판만 집계.</small></p>`;
+      const nm = (p) => `${esc(p.name)}${p.pid === st.myPid ? ' (나)' : ''}`;
+      const rows = duel.map((r) => `<tr class="${r.a.pid === st.myPid ? 'me' : ''}"><td>${nm(r.a)}</td><td class="duelscore">${r.aWins} : ${r.draws} : ${r.bWins}</td><td>${nm(r.b)}</td><td>${fmt(r.lastAt)}</td></tr>`).join('');
+      body = `<table class="rank"><tr><th>플레이어</th><th>승 : 무 : 승</th><th>상대</th><th>최근</th></tr>${rows}</table>
+      <p class="sheet-p"><small>모든 1:1 대결 (AI 없이 둘이서 한 판만). 내가 낀 대결이 위에 나와요.</small></p>`;
     }
   }
   return `<div class="overlay"><div class="panel">
