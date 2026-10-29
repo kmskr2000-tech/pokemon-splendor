@@ -11,6 +11,9 @@ import { MSG, makeMsg, stateHash } from './protocol.js';
 const MAX_PLAYERS = 4;
 export const EMOTES = ['😂', '🖕', '⏰'];
 const EMOTE_COOLDOWN_MS = 2500;
+// Host waits this long past the shown deadline before forcing a timeout, so an
+// action sent at the last second (Firebase relay ~1-2s) still counts.
+const TIMEOUT_GRACE_MS = 2500;
 const DEFAULT_TURN_LIMIT_MS = 45 * 1000; // 45 seconds per turn
 
 export class NetSession {
@@ -269,9 +272,19 @@ export class NetSession {
       }
       case MSG.ACTION: {
         if (this.phase !== 'playing' || !this.ctrl) return;
+        // Only the seat whose turn it is may act. A late action (e.g. sent right
+        // before a timeout passed the turn) must not be applied to the next player;
+        // realign that guest with the authoritative state instead.
+        const seat = this.peerToPlayer[peerIdx];
+        if (seat !== this.ctrl.game.current) {
+          this.room.sendTo(peerIdx, makeMsg(MSG.SYNC, { state: this.ctrl.game }));
+          break;
+        }
         const res = this.ctrl.applyRemote(m.action);
         if (res.ok) {
-          this.hostCommit(m.action, this.peerToPlayer[peerIdx], peerIdx);
+          this.hostCommit(m.action, seat, peerIdx);
+        } else {
+          this.room.sendTo(peerIdx, makeMsg(MSG.SYNC, { state: this.ctrl.game }));
         }
         break;
       }
@@ -389,6 +402,13 @@ export class NetSession {
         break;
       case MSG.ACTION: {
         if (this.phase !== 'playing' || !this.ctrl) return;
+        // The host's action belongs to seat `from`. If my mirror says it is someone
+        // else's turn (I already applied my own move locally and the host disagrees),
+        // don't apply it to the wrong player: fetch the authoritative state.
+        if (Number.isInteger(m.from) && m.from !== this.ctrl.game.current) {
+          this.room.send(makeMsg(MSG.SYNC_REQ, {}));
+          break;
+        }
         const res = this.ctrl.applyRemote(m.action);
         this.cb.onRender();
         if (res.ok && stateHash(this.ctrl.game) !== m.h) {
@@ -500,7 +520,7 @@ export class NetSession {
     if (this.role !== 'host') return;
     this._turnTimer = setInterval(() => {
       if (this.phase !== 'playing' || !this.ctrl) return;
-      if (Date.now() >= this.turnDeadline) {
+      if (Date.now() >= this.turnDeadline + TIMEOUT_GRACE_MS) {
         // Time's up! Force a pass for the current player.
         const current = this.ctrl.game.current;
         // Only auto-pass if it's a human's turn (AI acts on its own).
