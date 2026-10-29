@@ -414,12 +414,12 @@ function stopLobbyWatch() {
 const EMOTE_SHOW_MS = 2500;
 const esc2 = (t) => String(t).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-function showEmote({ k }) {
+function showEmote({ name, k }) {
   const box = document.getElementById('emotetoast');
   if (!box) return;
   const el = document.createElement('div');
   el.className = 'emote-bubble';
-  el.textContent = k; // emote only, no sender name (kept short)
+  el.innerHTML = `${esc2(name)}<b>${esc2(k)}</b>`;
   box.appendChild(el);
   while (box.children.length > 3) box.removeChild(box.firstChild);
   setTimeout(() => el.remove(), EMOTE_SHOW_MS);

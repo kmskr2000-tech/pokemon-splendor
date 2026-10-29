@@ -521,5 +521,6 @@ button.orsv:hover { border-color: #4ade80; }
 #emotebar button:disabled { opacity: .4; }
 #emotebar button.txt { width: auto; min-width: 44px; padding: 0 6px; font-size: 13px; color: #fef3c7; font-weight: bold; }
 #emotetoast { position: fixed; top: 64px; right: 8px; z-index: 210; display: flex; flex-direction: column; gap: 6px; align-items: flex-end; pointer-events: none; }
-.emote-bubble { background: #1a1a2e; border: 2px solid #fbbf24; color: #fef3c7; border-radius: 12px; padding: 4px 10px; font-size: 22px; font-weight: bold; animation: emotein .15s ease-out; }
+.emote-bubble { background: #1a1a2e; border: 2px solid #fbbf24; color: #fef3c7; border-radius: 12px; padding: 6px 10px; font-size: 14px; animation: emotein .15s ease-out; }
+.emote-bubble b { font-size: 22px; margin-left: 6px; vertical-align: middle; }
 @keyframes emotein { from { transform: translateY(-6px); opacity: 0; } to { transform: none; opacity: 1; } }
