@@ -24,13 +24,16 @@ export function buildResults(game, names, pids, code, seed, onlySeat = null, now
     out.push({
       id: `${code || 'X'}-${seed >>> 0}-${r.player}`,
       rec: {
-        at: now, code: code || '', humans, top,
+        at: now, code: code || '', humans, top, seats: (game.players || []).length,
         players: [{ pid, name: String(names[r.player] ?? '?').slice(0, 12), ai: false, rank: r.rank, points: r.points }],
       },
     });
   }
   return out;
 }
+
+// Per-seat record id `${code}-${seed}-${seat}` -> game id `${code}-${seed}`.
+const gameOf = (k) => (/^.+-\d+-\d+$/.test(k) ? k.replace(/-\d+$/, '') : k);
 
 /**
  * Aggregate stored matches -> [{ pid, name, games, wins, draws, losses, rate, lastAt }].
@@ -42,7 +45,6 @@ export function buildResults(game, names, pids, code, seed, onlySeat = null, now
 export function aggregateStats(matches) {
   const entries = Object.entries(matches || {})
     .filter(([k, m]) => !k.startsWith('_') && m && Array.isArray(m.players) && Number.isFinite(m.at));
-  const gameOf = (k) => (/^.+-\d+-\d+$/.test(k) ? k.replace(/-\d+$/, '') : k);
   const firsts = new Map(); // game -> rank-1 human seats seen
   for (const [k, m] of entries) {
     const n = m.players.filter((p) => p && p.rank === 1).length;
@@ -70,5 +72,48 @@ export function aggregateStats(matches) {
   const out = [...rows.values()];
   out.forEach((r) => { r.rate = r.games ? Math.round((r.wins / r.games) * 100) : 0; });
   out.sort((a, b) => b.wins - a.wins || b.rate - a.rate || b.games - a.games);
+  return out;
+}
+
+/**
+ * Duel (1:1) record of `myPid` against each opponent:
+ * [{ pid, name, games, wins, draws, losses, rate, lastAt }] (wins/draws/losses are mine).
+ * A duel is a game with exactly two people and no AI seats (`seats` == 2; older
+ * records without `seats` are assumed AI-free). Both seats must be stored to know
+ * the opponent.
+ */
+export function duelStats(matches, myPid) {
+  if (!cleanPid(myPid)) return [];
+  const games = new Map(); // game id -> { at, people, seats, players: Map(pid -> player) }
+  for (const [k, m] of Object.entries(matches || {})) {
+    if (k.startsWith('_') || !m || !Array.isArray(m.players) || !Number.isFinite(m.at)) continue;
+    const id = gameOf(k);
+    let g = games.get(id);
+    if (!g) games.set(id, (g = { at: m.at, people: m.humans, seats: m.seats, players: new Map() }));
+    g.at = Math.max(g.at, m.at);
+    if (Number.isInteger(m.humans)) g.people = m.humans;
+    if (Number.isInteger(m.seats)) g.seats = m.seats;
+    for (const p of m.players) if (p && !p.ai && cleanPid(p.pid)) g.players.set(p.pid, p);
+  }
+  const rows = new Map();
+  const list = [...games.values()].sort((a, b) => a.at - b.at);
+  for (const g of list) {
+    const people = Number.isInteger(g.people) ? g.people : g.players.size;
+    if (people !== 2 || (Number.isInteger(g.seats) && g.seats !== 2)) continue;
+    if (g.players.size !== 2 || !g.players.has(myPid)) continue;
+    const me = g.players.get(myPid);
+    const opp = [...g.players.values()].find((p) => p.pid !== myPid);
+    let r = rows.get(opp.pid);
+    if (!r) rows.set(opp.pid, (r = { pid: opp.pid, name: '', games: 0, wins: 0, draws: 0, losses: 0, rate: 0, lastAt: 0 }));
+    r.name = opp.name || r.name;
+    r.games += 1;
+    if (me.rank === 1 && opp.rank === 1) r.draws += 1;
+    else if (me.rank === 1) r.wins += 1;
+    else r.losses += 1;
+    r.lastAt = g.at;
+  }
+  const out = [...rows.values()];
+  out.forEach((r) => { r.rate = r.games ? Math.round((r.wins / r.games) * 100) : 0; });
+  out.sort((a, b) => b.games - a.games || b.lastAt - a.lastAt);
   return out;
 }

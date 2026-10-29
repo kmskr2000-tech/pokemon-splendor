@@ -222,6 +222,7 @@ button.card:not(:disabled):active { transform: translate(3px, 3px); box-shadow: 
 .rank { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 12px; }
 .rank td { border: 2px solid var(--ink); padding: 8px 6px; background: var(--panel); }
 .rank tr.win td { background: #5b4400; color: var(--gold); }
+.statstabs { justify-content: center; margin-bottom: 10px; }
 .rank tr.me td { background: #1e3a5f; color: #fef3c7; }
 .rank tr.me td:nth-child(2) { color: #86efac; }
 

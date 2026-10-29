@@ -635,20 +635,33 @@ export function challengeEndHTML(won, challenge) {
 
 // ---------- multiplayer rejoin ----------
 
-// Friend stats (multiplayer). st: { loading, error, rows, myPid }
+// Friend stats (multiplayer). st: { loading, error, rows, duel, tab: 'all'|'duel', myPid }
 export function friendStatsHTML(st) {
+  const tab = st.tab === 'duel' ? 'duel' : 'all';
+  const fmt = (t) => { const d = new Date(t); return `${d.getMonth() + 1}/${d.getDate()}`; };
   let body;
   if (st.loading) body = '<p class="sheet-p">불러오는 중…</p>';
   else if (st.error) body = '<p class="sheet-p">전적을 불러오지 못했어요. 잠시 후 다시 시도해주세요.</p>';
-  else if (!st.rows.length) body = '<p class="sheet-p">아직 기록된 대전이 없어요.<br><small>친구와 멀티 게임을 끝까지 하면 쌓여요.</small></p>';
-  else {
-    const fmt = (t) => { const d = new Date(t); return `${d.getMonth() + 1}/${d.getDate()}`; };
-    const rows = st.rows.map((r, i) => `<tr class="${r.pid === st.myPid ? 'me' : ''}"><td>${i + 1}</td><td>${esc(r.name)}${r.pid === st.myPid ? ' (나)' : ''}</td><td>${r.wins}</td><td>${r.draws}</td><td>${r.losses}</td><td>${r.rate}%</td><td>${fmt(r.lastAt)}</td></tr>`).join('');
-    body = `<table class="rank"><tr><th></th><th>이름</th><th>승</th><th>무</th><th>패</th><th>승률</th><th>최근</th></tr>${rows}</table>
+  else if (tab === 'all') {
+    if (!st.rows.length) body = '<p class="sheet-p">아직 기록된 대전이 없어요.<br><small>친구와 멀티 게임을 끝까지 하면 쌓여요.</small></p>';
+    else {
+      const rows = st.rows.map((r, i) => `<tr class="${r.pid === st.myPid ? 'me' : ''}"><td>${i + 1}</td><td>${esc(r.name)}${r.pid === st.myPid ? ' (나)' : ''}</td><td>${r.wins}</td><td>${r.draws}</td><td>${r.losses}</td><td>${r.rate}%</td><td>${fmt(r.lastAt)}</td></tr>`).join('');
+      body = `<table class="rank"><tr><th></th><th>이름</th><th>승</th><th>무</th><th>패</th><th>승률</th><th>최근</th></tr>${rows}</table>
       <p class="sheet-p"><small>단독 1등만 승리, 공동 1등은 무승부. AI 좌석과, 사람 1명 + AI만 있던 판은 제외.</small></p>`;
+    }
+  } else {
+    const duel = st.duel || [];
+    if (!duel.length) body = '<p class="sheet-p">아직 1:1 대결 기록이 없어요.<br><small>AI 없이 친구와 둘이서 끝까지 한 판이 쌓여요.</small></p>';
+    else {
+      const rows = duel.map((r) => `<tr><td>${esc(r.name)}</td><td>${r.wins}</td><td>${r.draws}</td><td>${r.losses}</td><td>${r.rate}%</td><td>${fmt(r.lastAt)}</td></tr>`).join('');
+      body = `<table class="rank"><tr><th>상대</th><th>승</th><th>무</th><th>패</th><th>승률</th><th>최근</th></tr>${rows}</table>
+      <p class="sheet-p"><small>나 기준 상대별 1:1 전적. AI 없이 둘이서 한 판만 집계.</small></p>`;
+    }
   }
   return `<div class="overlay"><div class="panel">
-    <div class="title big">🏆 친구 전적</div>
+    <div class="title big">🏆 ${tab === 'duel' ? '듀얼 전적' : '친구 전적'}</div>
+    <div class="aibtns statstabs"><button class="aibtn ${tab === 'all' ? 'sel' : ''}" data-action="net-stats-tab" data-tab="all">친구 전적</button>
+    <button class="aibtn ${tab === 'duel' ? 'sel' : ''}" data-action="net-stats-tab" data-tab="duel">⚔ 듀얼 전적</button></div>
     ${body}
     <div class="btnrow"><button class="btn ghost" data-action="net-stats-refresh">🔄 새로고침</button>
     <button class="btn primary" data-action="net-stats-close">닫기</button></div>

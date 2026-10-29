@@ -54,7 +54,7 @@ import { createController } from './controller.js';
 import * as V from './view.js';
 import { NetSession, EMOTES } from '../net/session.js';
 import { listRooms, watchRooms, loadMatches } from '../net/fireroom.js';
-import { aggregateStats } from '../net/stats.js';
+import { aggregateStats, duelStats } from '../net/stats.js';
 import { getBonuses, getPoints, bonusList } from '../core/engine.js';
 import { startBGM, stopBGM, unlockAudio } from '../audio/bgm.js';
 import { sfx, setSFXEnabled } from '../audio/sfx.js';
@@ -427,10 +427,11 @@ function showEmote({ name, k }) {
 
 function openFriendStats() {
   const myPid = getPlayerId(storage);
-  friendStats = { loading: true, error: false, rows: [], myPid };
+  const tab = friendStats?.tab || 'all';
+  friendStats = { loading: true, error: false, rows: [], duel: [], tab, myPid };
   loadMatches()
-    .then((m) => { if (friendStats) friendStats = { loading: false, error: false, rows: aggregateStats(m), myPid }; })
-    .catch(() => { if (friendStats) friendStats = { loading: false, error: true, rows: [], myPid }; })
+    .then((m) => { if (friendStats) friendStats = { loading: false, error: false, rows: aggregateStats(m), duel: duelStats(m, myPid), tab: friendStats.tab, myPid }; })
+    .catch(() => { if (friendStats) friendStats = { loading: false, error: true, rows: [], duel: [], tab: friendStats.tab, myPid }; })
     .finally(() => render());
 }
 
@@ -574,6 +575,7 @@ document.addEventListener('click', (e) => {
     case 'net-help': netHelpOpen = true; break;
     case 'net-stats': case 'net-stats-refresh': openFriendStats(); break;
     case 'net-stats-close': friendStats = null; break;
+    case 'net-stats-tab': if (friendStats) friendStats.tab = d.tab === 'duel' ? 'duel' : 'all'; break;
     case 'net-help-close': netHelpOpen = false; break;
     case 'net-timelimit': if (net) {
       const ms = Number(d.ms);
