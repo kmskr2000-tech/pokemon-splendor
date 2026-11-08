@@ -524,3 +524,53 @@ button.orsv:hover { border-color: #4ade80; }
 .emote-bubble { background: #1a1a2e; border: 2px solid #fbbf24; color: #fef3c7; border-radius: 12px; padding: 6px 10px; font-size: 14px; animation: emotein .15s ease-out; }
 .emote-bubble b { font-size: 22px; margin-left: 6px; vertical-align: middle; }
 @keyframes emotein { from { transform: translateY(-6px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* ---------- wallet / betting / spectating (2026-11-08) ---------- */
+.walletbar {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  background: #1e3a2f; border: 3px solid var(--ink); border-radius: 8px;
+  padding: 8px 12px; margin: 4px 0 10px; font-size: 13px; color: #d1fae5;
+}
+.walletbar b { color: var(--gold); }
+.walletbtns { display: flex; gap: 6px; }
+.aibtn.adm { background: #b45309; }
+.aibtn.ok { background: #15803d; }
+.aibtn.no { background: #991b1b; }
+.aibtns.wrap { flex-wrap: wrap; justify-content: flex-end; }
+.airow.col { flex-direction: column; align-items: stretch; }
+.airow.col .aibtns { justify-content: flex-start; }
+.netinput.small { width: 120px; margin: 0; padding: 6px 8px; font-size: 13px; }
+.roomitem .roomact { margin-top: 6px; display: flex; justify-content: flex-end; }
+.roomitem.live { border-color: #b45309; background: #2f2a22; }
+.feeline b { color: var(--gold); }
+.paid { color: #86efac; font-size: 11px; }
+.unpaid { color: #fcd34d; font-size: 11px; }
+.betpanel { background: #23233a; border: 3px solid var(--ink); border-radius: 8px; padding: 10px; margin: 10px 0; }
+.betpanel .difflabel { margin-top: 0; }
+.bettargets { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 6px 0; }
+.bettarget {
+  background: #2a2a45; border: 3px solid var(--ink); border-radius: 8px; padding: 8px;
+  display: flex; flex-direction: column; gap: 3px; color: #fff; text-align: left; font-family: inherit;
+}
+.bettarget b { font-size: 14px; }
+.bettarget span { font-size: 10px; color: #a0a0c0; }
+.bettarget.sel { background: #5b4400; border-color: var(--gold); }
+.bettarget:disabled { opacity: .5; }
+.mybets { font-size: 12px; color: #fde68a; margin: 6px 0; }
+.settlebox { background: #1e3a2f; border: 3px solid var(--ink); border-radius: 8px; padding: 10px; margin: 8px 0; font-size: 13px; line-height: 1.8; color: #d1fae5; }
+.settlebox .mine { color: var(--gold); }
+.balance { text-align: center; margin: 8px 0 12px; }
+.balance small { display: block; color: var(--muted); font-size: 11px; }
+.balance b { display: block; font-size: 32px; color: var(--gold); text-shadow: 2px 2px 0 var(--ink); margin-top: 4px; }
+.bankbox { background: #2a2a45; border: 3px solid var(--gold); border-radius: 8px; padding: 10px; text-align: center; margin: 6px 0 10px; }
+.bankbox small { display: block; color: var(--muted); font-size: 11px; margin-bottom: 4px; }
+.bankbox b { font-size: 15px; color: #fff; word-break: break-all; }
+.feebox { background: #3b2a08; border: 3px solid var(--gold); border-radius: 8px; padding: 10px; margin: 6px 0 10px; font-size: 13px; }
+.feebox b { color: var(--gold); font-size: 18px; margin-left: 6px; }
+.feebox small { display: block; color: #fde68a; font-size: 10px; margin-top: 6px; line-height: 1.5; }
+.admrow { display: flex; align-items: center; justify-content: space-between; gap: 8px; background: #2a2a45; border: 2px solid var(--ink); border-radius: 8px; padding: 8px 10px; margin: 6px 0; font-size: 13px; }
+.admrow small { color: var(--muted); font-size: 10px; }
+.rank.small { font-size: 11px; }
+.rank.small td { padding: 5px 4px; }
+.rank tr.plus td:nth-child(3) { color: #86efac; }
+.rank tr.minus td:nth-child(3) { color: #fca5a5; }

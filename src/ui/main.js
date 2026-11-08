@@ -60,6 +60,8 @@ import { startBGM, stopBGM, unlockAudio } from '../audio/bgm.js';
 import { sfx, setSFXEnabled } from '../audio/sfx.js';
 import { browserStorage, loadDex, loadSave, saveGame, clearSave, recordCatch, recordGame, loadOptions, saveOptions, loadAchv, unlockAchv, loadRecords, recordResult, victoryScore, loadChal, completeChal, getPlayerId } from '../storage/store.js';
 import { createTurnAlerter } from './turn-alert.js';
+import { authAvailable, watchAuth, signIn, signOut } from '../wallet/auth.js';
+import * as W from '../wallet/wallet.js';
 
 const params = new URLSearchParams(location.search);
 const AI_DELAY = params.has('fast') ? 0 : 1600; // ?fast=1 skips the pacing delay (tests)
@@ -93,6 +95,13 @@ let recordsOpen = false;
 let chalOpen = false;
 let tutorial = null; // { step } — guided first-game tutorial
 let optionsOpen = false;
+// Wallet (real-money prepaid balance: entry fees, spectator bets). See src/wallet/.
+const wallet = {
+  available: false, user: null, config: null, balance: 0, ledger: [], requests: null,
+  admin: false, open: false, tab: 'main', notice: '', busy: false, adminData: null,
+  _un: [], _unAdmin: [],
+};
+let betUi = { target: null, amount: 1000 }; // spectator bet form state
 const storage = browserStorage();
 const options = loadOptions(storage);
 setSFXEnabled(options.sfx);
@@ -138,17 +147,32 @@ function render() {
   if (ctrl) lastTurnPlayer = ctrl.game.current;
   else lastTurnPlayer = -1;
 
-  if (ctrl) for (const [id, fn] of Object.values(regions)) setHTML(id, fn(ctrl));
+  if (ctrl) {
+    for (const [id, fn] of Object.values(regions)) {
+      if (ctrl.spectator && net) {
+        // Spectators have no seat: swap the "my area" and action bar for the bet panel.
+        if (id === 'me') { setHTML(id, V.spectatorPanelHTML(net, ctrl, wallet, betUi)); continue; }
+        if (id === 'actionbar') { setHTML(id, V.spectatorBarHTML(ctrl)); continue; }
+        if (id === 'help') { setHTML(id, ''); continue; }
+      }
+      setHTML(id, fn(ctrl));
+    }
+  }
   let overlay;
-  if (friendStats && net && !ctrl) {
+  if (wallet.open) {
+    overlay = V.walletHTML(wallet);
+    wallet.notice = '';
+  } else if (friendStats && net && !ctrl) {
     overlay = V.friendStatsHTML(friendStats);
   } else if (netHelpOpen && net) {
     overlay = V.netHelpHTML();
   } else if (net && !ctrl) {
-    overlay = V.netHTML(net, netNotice);
+    overlay = V.netHTML(net, netNotice, wallet, betUi);
     netNotice = '';
   } else {
-    overlay = !ctrl ? V.startHTML({ save: loadSave(storage, CARDS), dex: loadDex(storage), cards: CARDS, options, notice: netNotice }) : ctrl.finished ? V.endHTML(ctrl) : '';
+    const extra = ctrl && net && !ctrl.spectator ? V.settlementHTML(net, wallet.user ? wallet.user.uid : '') : '';
+    // Spectators keep the board visible after the end (bet result shows in their panel).
+    overlay = !ctrl ? V.startHTML({ save: loadSave(storage, CARDS), dex: loadDex(storage), cards: CARDS, options, notice: netNotice }) : ctrl.finished && !ctrl.spectator ? V.endHTML(ctrl, extra) : '';
     netNotice = '';
   }
   if (ctrl?.challengeDone) overlay = V.challengeEndHTML(ctrl.challengeDone === 'won', ctrl.challenge);
@@ -374,15 +398,88 @@ function openNet() {
       startTimerUpdater();
       render();
     },
-    onGameEnd: () => { stopLobbyWatch(); stopTimerUpdater(); net = null; ctrl = null; render(); },
+    onGameEnd: () => { stopLobbyWatch(); stopTimerUpdater(); net = null; ctrl = null; betUi = { target: null, amount: 1000 }; render(); },
     onNotice: (msg) => { netNotice = msg; render(); },
     onEmote: showEmote,
   }, { pid: getPlayerId(storage) });
   net.myName = options.playerName || ''; // pre-fill saved name
   net.roomList = [];
+  startWallet();
   refreshLobby();
   render();
 }
+
+// ---------- wallet ----------
+
+/** Lazy-start auth + wallet watchers (first time the lobby or wallet screen opens). */
+function startWallet() {
+  if (wallet._started) return;
+  wallet._started = true;
+  wallet.available = authAvailable();
+  if (!wallet.available) return;
+  try {
+    wallet._un.push(W.watchConfig((c) => { wallet.config = c; wallet.admin = W.isAdmin(c, wallet.user && wallet.user.uid); render(); }));
+  } catch {}
+  watchAuth((u) => {
+    for (const un of wallet._userUn || []) { try { un(); } catch {} }
+    wallet._userUn = [];
+    stopAdminWatch();
+    wallet.user = u;
+    wallet.balance = 0; wallet.ledger = []; wallet.requests = null;
+    wallet.admin = W.isAdmin(wallet.config, u && u.uid);
+    if (u) {
+      try {
+        wallet._userUn.push(W.watchUser(u.uid, (row) => { wallet.balance = row.balance; render(); }));
+        wallet._userUn.push(W.watchLedger(u.uid, (rows) => { wallet.ledger = rows; render(); }));
+        wallet._userUn.push(W.watchMyRequests(u.uid, (r) => { wallet.requests = r; render(); }));
+      } catch {}
+    } else if (wallet.tab === 'admin') wallet.tab = 'main';
+    render();
+  });
+}
+
+function startAdminWatch() {
+  if (wallet._unAdmin.length || !wallet.admin) return;
+  wallet.adminData = { deposits: [], withdrawals: [], rooms: [], feeTotal: 0 };
+  const d = wallet.adminData;
+  try {
+    wallet._unAdmin.push(W.watchPending('deposits', (a) => { d.deposits = a; render(); }));
+    wallet._unAdmin.push(W.watchPending('withdrawals', (a) => { d.withdrawals = a; render(); }));
+    wallet._unAdmin.push(W.watchOpenEscrows((a) => { d.rooms = a; render(); }));
+    wallet._unAdmin.push(W.watchFeeTotal((n) => { d.feeTotal = n; render(); }));
+  } catch {}
+}
+
+function stopAdminWatch() {
+  for (const un of wallet._unAdmin) { try { un(); } catch {} }
+  wallet._unAdmin = [];
+}
+
+function openWallet(tab = 'main') {
+  startWallet();
+  wallet.open = true;
+  wallet.tab = tab;
+  if (tab === 'admin') startAdminWatch();
+  render();
+}
+
+/** Run a wallet request with busy state + notice on failure. */
+async function walletDo(label, fn, okMsg = '') {
+  if (wallet.busy) return;
+  wallet.busy = true;
+  render();
+  try {
+    await fn();
+    if (okMsg) wallet.notice = okMsg;
+  } catch (e) {
+    wallet.notice = `${label} 실패: ${(e && e.message) || '알 수 없는 오류'}`;
+  } finally {
+    wallet.busy = false;
+    render();
+  }
+}
+
+const numVal = (id) => Math.floor(Number(document.getElementById(id)?.value) || 0);
 
 let _lobbyUnwatch = null;
 
@@ -439,7 +536,7 @@ let emoteBarOn = false;
 function syncEmoteBar() {
   const bar = document.getElementById('emotebar');
   if (!bar) return;
-  const on = !!(net && ctrl && ctrl.mp && !ctrl.finished && net.phase === 'playing');
+  const on = !!(net && ctrl && ctrl.mp && !ctrl.spectator && !ctrl.finished && net.phase === 'playing');
   if (on === emoteBarOn) return;
   emoteBarOn = on;
   bar.hidden = !on;
@@ -532,6 +629,7 @@ document.addEventListener('click', (e) => {
       }
       break;
     case 'opp': ctrl.openOpp(d.id); break;
+    case 'card': if (ctrl.spectator) { ctrl.viewCard(d.card); break; } ctrl.openCard(d.card); break;
     case 'view-card':
       ctrl.viewCard(d.card, d.from === 'opp' ? { kind: 'opp', playerId: Number(d.pid) } : null);
       break;
@@ -546,6 +644,71 @@ document.addEventListener('click', (e) => {
       if (options.bgm) startBGM('calm');
       break;
     case 'tutorial': startTutorial(); return;
+    // ----- wallet -----
+    case 'wallet': openWallet(wallet.open ? wallet.tab : 'main'); return;
+    case 'wallet-admin': openWallet('admin'); return;
+    case 'wallet-close': wallet.open = false; break;
+    case 'wallet-tab': wallet.tab = d.tab || 'main'; if (wallet.tab === 'admin') startAdminWatch(); break;
+    case 'wallet-login':
+      startWallet();
+      if (!wallet.available) { wallet.open = true; break; }
+      walletDo('로그인', () => signIn());
+      return;
+    case 'wallet-logout': walletDo('로그아웃', () => signOut()); return;
+    case 'wallet-deposit': {
+      const amt = numVal('depamt');
+      const who = netInputVal('depname').trim();
+      const min = (wallet.config && wallet.config.minDeposit) || 1000;
+      if (amt < min) { wallet.notice = `최소 ${W.fmtWon(min)}부터 충전할 수 있어요.`; break; }
+      if (!who) { wallet.notice = '입금자명을 적어주세요.'; break; }
+      walletDo('충전 요청', () => W.requestDeposit(wallet.user, amt, who), '충전 요청을 보냈어요. 운영자 확인 후 잔액에 반영돼요.');
+      return;
+    }
+    case 'wallet-withdraw': {
+      const amt = numVal('wdamt');
+      const bank = netInputVal('wdbank').trim();
+      if (amt < 1000 || amt > wallet.balance) { wallet.notice = '출금 금액을 확인해주세요.'; break; }
+      if (!bank) { wallet.notice = '받을 계좌를 적어주세요.'; break; }
+      walletDo('출금 요청', () => W.requestWithdraw(amt, bank), '출금 요청을 보냈어요. 운영자가 이체하면 완료로 바뀌어요.');
+      return;
+    }
+    case 'adm-dep': walletDo('충전 처리', () => W.decideDeposit(d.id, d.ok === '1')); return;
+    case 'adm-wd': walletDo('출금 처리', () => W.decideWithdraw(d.id, d.ok === '1')); return;
+    case 'adm-room': {
+      const mode = d.mode === 'host' ? 'host' : 'refund';
+      if (!confirm(mode === 'refund' ? `방 ${d.code}의 참가비·베팅을 전액 환불할까요?` : `방 ${d.code}을(를) 방장이 보고한 결과로 정산할까요?`)) break;
+      walletDo('방 정산', () => W.resolveRoom(d.code, mode));
+      return;
+    }
+    case 'adm-config': {
+      const bank = netInputVal('cfgbank').trim();
+      const feePct = numVal('cfgfee');
+      walletDo('설정 저장', () => W.setConfig({ bank, feeRate: Math.min(50, Math.max(0, feePct)) / 100 }), '설정을 저장했어요.');
+      return;
+    }
+    // ----- betting / spectating -----
+    case 'net-fee': if (net) { net.pendingFee = Math.max(0, Number(d.fee) || 0); } break;
+    case 'net-pay': if (net) { net.payEntry(); return; } break;
+    case 'net-spectate': if (net) {
+      const code = d.code;
+      if (!code) break;
+      e.stopPropagation();
+      betUi = { target: null, amount: 1000 };
+      netNotice = '';
+      net.guestJoin(net.myName || options.playerName || '관전자', code, { spectator: true });
+      return;
+    }
+    case 'bet-target': betUi.target = d.uid || null; break;
+    case 'bet-amount': betUi.amount = Number(d.amt) || 1000; break;
+    case 'bet-place': if (net) {
+      const custom = numVal('betamt');
+      const amt = custom > 0 ? custom : betUi.amount;
+      if (!betUi.target) break;
+      if (amt < 100) { netNotice = '베팅은 100원부터 가능해요.'; break; }
+      if (wallet.user && amt > wallet.balance) { netNotice = '잔액이 부족해요. 지갑에서 충전해주세요.'; break; }
+      net.placeBet(betUi.target, amt);
+      return;
+    } break;
     // ----- multiplayer -----
     case 'net': openNet(); break;
     case 'net-menu': if (net) { net.phase = 'menu'; netNotice = ''; refreshLobby(); } break;
@@ -591,7 +754,9 @@ document.addEventListener('click', (e) => {
       const title = titleEl ? titleEl.value.trim().slice(0, 20) : '';
       const turnLimitMs = net.pendingTurnLimit || 45000;
       net.pendingTurnLimit = null;
-      net.hostCreate(name, title, turnLimitMs);
+      const fee = net.pendingFee || 0;
+      net.pendingFee = 0;
+      net.hostCreate(name, title, turnLimitMs, fee);
       return;
     } break;
     case 'net-host-invite': if (net) { netNotice = ''; net.hostInvite(); return; } break;
@@ -649,7 +814,6 @@ document.addEventListener('click', (e) => {
       flyBalls(snap, colors, document.getElementById('me'));
       return;
     }
-    case 'card': ctrl.openCard(d.card); break;
     case 'deck': ctrl.openDeck(d.tier); break;
     case 'close': ctrl.closeSheet(); break;
     case 'buy': {

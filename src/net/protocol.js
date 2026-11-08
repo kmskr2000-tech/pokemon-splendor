@@ -14,6 +14,9 @@ export const MSG = {
   PING: 'ping',        // both ways {t}
   PONG: 'pong',        // both ways {t}
   BYE: 'bye',          // both ways {}
+  // Spectators (watch-only peers; never seated, never act):
+  SPECTATE_OK: 'spectate-ok', // H->S {names, uids, pids, aiNames, seed?, turnLimitMs, state?} accepted as spectator
+  SPECTATORS: 'spectators',   // H->all {n} spectator head count (lobby/header display)
 };
 
 export function makeMsg(t, body = {}) {

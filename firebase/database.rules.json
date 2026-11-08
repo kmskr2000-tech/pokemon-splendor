@@ -1,0 +1,63 @@
+{
+  "rules": {
+    "pkmspl-rooms": {
+      ".read": true,
+      "$code": { ".write": true }
+    },
+    "pkmspl-matches": {
+      ".read": true,
+      "$id": { ".write": "!data.exists()" }
+    },
+
+    "pkmspl-escrow": {
+      ".read": true,
+      ".write": false
+    },
+
+    "pkmspl-wallet": {
+      "config": {
+        ".read": true,
+        ".write": false
+      },
+      "users": {
+        ".read": "auth != null && root.child('pkmspl-wallet/config/admins').child(auth.uid).val() === true",
+        "$uid": {
+          ".read": "auth != null && auth.uid === $uid",
+          ".write": false
+        }
+      },
+      "ledger": {
+        ".read": "auth != null && root.child('pkmspl-wallet/config/admins').child(auth.uid).val() === true",
+        "$uid": {
+          ".read": "auth != null && auth.uid === $uid",
+          ".write": false
+        }
+      },
+      "deposits": {
+        ".read": "auth != null && root.child('pkmspl-wallet/config/admins').child(auth.uid).val() === true",
+        ".indexOn": ["uid", "status"],
+        "$id": {
+          ".read": "auth != null && data.child('uid').val() === auth.uid",
+          ".write": "auth != null && !data.exists() && newData.child('uid').val() === auth.uid && newData.child('status').val() === 'pending' && newData.child('amount').isNumber() && newData.child('amount').val() >= 1000 && newData.child('amount').val() <= 10000000",
+          ".validate": "newData.hasChildren(['uid', 'amount', 'status', 'at'])"
+        }
+      },
+      "withdrawals": {
+        ".read": "auth != null && root.child('pkmspl-wallet/config/admins').child(auth.uid).val() === true",
+        ".indexOn": ["uid", "status"],
+        "$id": {
+          ".read": "auth != null && data.child('uid').val() === auth.uid",
+          ".write": false
+        }
+      },
+      "fees": {
+        ".read": "auth != null && root.child('pkmspl-wallet/config/admins').child(auth.uid).val() === true",
+        ".write": false
+      },
+      "feeTotal": {
+        ".read": "auth != null && root.child('pkmspl-wallet/config/admins').child(auth.uid).val() === true",
+        ".write": false
+      }
+    }
+  }
+}

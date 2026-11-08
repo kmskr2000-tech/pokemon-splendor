@@ -11,7 +11,8 @@
 //   pkmspl-rooms/{CODE}/
 //     created: timestamp
 //     hostName: string
-//     guests/{guestId}/: { name, joinedAt }
+//     entryFee: number (0 = free room)
+//     guests/{guestId}/: { name, joinedAt, hb, playerIndex?, spectator? }
 //     msgs/
 //       toHost/{pushId}: { from: guestId, data: msgString }
 //       toGuest/{guestId}/{pushId}: { data: msgString }
@@ -109,6 +110,16 @@ export const ROOM_SWEEP_MS = 30 * 60 * 1000;
 /** Pure: is this room shown in the lobby? (exported for tests) */
 export function isRoomJoinable(r, now = Date.now()) {
   if (!r || r.started) return false;
+  return isHostFresh(r, now);
+}
+
+/** Pure: can a spectator watch this room? Started, host alive, not finished. */
+export function isRoomWatchable(r, now = Date.now()) {
+  if (!r || !r.started || r.finished) return false;
+  return isHostFresh(r, now);
+}
+
+function isHostFresh(r, now) {
   const hb = r.hostHb || 0;
   if (hb && now - hb < HOST_FRESH_MS) return true;
   // Old clients without heartbeat: show only brand-new rooms.
@@ -145,13 +156,22 @@ function classifyRooms(snap) {
         dead.push(code);
         return;
       }
-      if (!isRoomJoinable(r, now)) return;
-      const guests = r.guests ? Object.keys(r.guests).length : 0;
+      const joinable = isRoomJoinable(r, now);
+      const watchable = isRoomWatchable(r, now);
+      if (!joinable && !watchable) return;
+      let guests = 0;
+      let spectators = 0;
+      for (const g of Object.values(r.guests || {})) {
+        if (g && g.spectator) spectators += 1; else guests += 1;
+      }
       rooms.push({
         code,
         title: r.title || '제목 없음',
         hostName: r.hostName || '?',
-        playerCount: 1 + guests, // host + guests
+        playerCount: 1 + guests, // host + seated guests
+        spectators,
+        started: !!r.started,
+        entryFee: Math.max(0, Math.floor(Number(r.entryFee) || 0)),
         created: r.created || 0,
         turnLimitMs: r.turnLimitMs || 45000,
       });
@@ -185,7 +205,8 @@ export class FirebaseRoom {
     this.onsuperseded = onsuperseded;   // host: another client claimed hostId (split-brain)
     this.isHost = false;
     this.closed = false;
-    this.peers = []; // host: [{guestId, name, removed?}], guest: [{guestId: 'host'}]
+    this.peers = []; // host: [{guestId, name, removed?, spectator?}], guest: [{guestId: 'host'}]
+    this.spectator = false; // guest: joined watch-only
     this.code = null;
     this.myGuestId = null;
     this._joinToken = null;
@@ -214,9 +235,10 @@ export class FirebaseRoom {
   // ---------- host ----------
 
   /** Host: create a room, return the 6-char code. */
-  async hostCreate(hostName = '', title = '', turnLimitMs = 45000) {
+  async hostCreate(hostName = '', title = '', turnLimitMs = 45000, entryFee = 0) {
     this.isHost = true;
     this.turnLimitMs = turnLimitMs;
+    this.entryFee = entryFee;
     const db = getDb();
     this._db = db;
     for (let i = 0; i < 4; i++) {
@@ -229,6 +251,7 @@ export class FirebaseRoom {
         title: title || `${hostName}의 방`,
         hostName: hostName || '?',
         turnLimitMs,
+        entryFee: Math.max(0, Math.floor(Number(entryFee) || 0)),
       });
       this.code = code;
       // Host presence: unique hostId + heartbeat. If this client disconnects,
@@ -262,7 +285,7 @@ export class FirebaseRoom {
         this._guestHb[guestId] = g.hb || 0;
         if (this.peers.some((p) => p.guestId === guestId && !p.removed)) return;
         const idx = this.peers.length;
-        this.peers.push({ guestId, name: g.name || '?' });
+        this.peers.push({ guestId, name: g.name || '?', spectator: !!g.spectator });
         if (!this.closed) this.onjoin(idx);
       });
     }
@@ -389,7 +412,7 @@ export class FirebaseRoom {
       if (this.closed) return;
       const wasRemoved = !snap.exists();
       if (wasRemoved) {
-        await ref.set({ name: this._guestName || '', joinedAt: Date.now(), hb: Date.now() });
+        await ref.set({ name: this._guestName || '', joinedAt: Date.now(), hb: Date.now(), ...(this.spectator ? { spectator: true } : {}) });
       } else {
         await ref.child('hb').set(Date.now());
       }
@@ -442,9 +465,11 @@ export class FirebaseRoom {
 
   // ---------- guest ----------
 
-  /** Guest: join with the host's code. Resolves when host acknowledges. */
-  async guestJoin(code, onRetry = null) {
+  /** Guest: join with the host's code. Resolves when host acknowledges.
+   *  opts.spectator: watch-only (allowed into started rooms; never seated). */
+  async guestJoin(code, onRetry = null, opts = {}) {
     this.isHost = false;
+    this.spectator = !!opts.spectator;
     const clean = String(code || '').trim().toUpperCase();
     if (!/^[A-Z2-9]{4,8}$/.test(clean)) throw new Error('bad code');
     const db = getDb();
@@ -460,6 +485,14 @@ export class FirebaseRoom {
         if (!roomSnap.exists()) throw new Error('room-not-found');
         const roomData = roomSnap.val() || {};
         this.turnLimitMs = roomData.turnLimitMs || 45000;
+        this.entryFee = Math.max(0, Math.floor(Number(roomData.entryFee) || 0));
+        this.hostUid = roomData.hostUid || '';
+        if (roomData.started && !this.spectator) {
+          // Seated join into a running game is only a rejoin (handled by HELLO);
+          // brand-new players must spectate instead.
+          const rj = opts.rejoin;
+          if (!rj) throw new Error('room-started');
+        }
 
         const guestId = genId();
         this.myGuestId = guestId;
@@ -471,6 +504,7 @@ export class FirebaseRoom {
           name: '',
           joinedAt: Date.now(),
           hb: Date.now(),
+          ...(this.spectator ? { spectator: true } : {}),
         });
         // Fast disconnect detection: server removes our entry on socket loss.
         try {
@@ -521,7 +555,7 @@ export class FirebaseRoom {
           }
           if (this._joinToken !== null && this._joinToken !== joinToken) return;
           const r = snap.val() || {};
-          if (r.started && r.startInfo && !this._startFallbackDone) {
+          if (r.started && r.startInfo && !this._startFallbackDone && !this.spectator) {
             this._startFallbackDone = true;
             const si = r.startInfo;
             // Simulate receiving START message.
@@ -558,7 +592,7 @@ export class FirebaseRoom {
         setTimeout(() => { if (!this.closed) this.onjoin(0); }, 0);
         return;
       } catch (e) {
-        if (e && (e.message === 'room-not-found' || e.message === 'cancelled')) {
+        if (e && (e.message === 'room-not-found' || e.message === 'room-started' || e.message === 'cancelled')) {
           this._joinToken = null;
           throw e;
         }
@@ -589,9 +623,27 @@ export class FirebaseRoom {
     try {
       await this._db.ref(`${ROOMS_PATH}/${this.code}`).update({
         started: true,
+        startedAt: Date.now(),
         startInfo: startInfo || null,
       });
     } catch {}
+  }
+
+  /** Host: mark the game finished (hides the room from the spectator list). */
+  async markFinished() {
+    if (!this.isHost || !this.code || !this._db) return;
+    try { await this._db.ref(`${ROOMS_PATH}/${this.code}/finished`).set(true); } catch {}
+  }
+
+  /** Host: publish the host's wallet uid so guests can verify the escrow owner. */
+  async setHostUid(uid) {
+    if (!this.isHost || !this.code || !this._db || !uid) return;
+    try { await this._db.ref(`${ROOMS_PATH}/${this.code}/hostUid`).set(uid); } catch {}
+  }
+
+  /** Current spectator head count (host). */
+  spectatorCount() {
+    return this.peers.filter((p) => p && p.spectator && !p.removed).length;
   }
 
   /** Guest: try to claim the host lock after the old host is gone. Only one guest wins. */
@@ -660,21 +712,31 @@ export class FirebaseRoom {
     this._guestHb = {};
     this._seenMsgs = new Set();
     const guestMap = {};
+    const spectatorPeers = [];
     const now = Date.now();
     if (snap.exists()) {
       snap.forEach((child) => {
         const gid = child.key;
         if (gid === this.myGuestId) return;
         const g = child.val() || {};
+        if (g.hb && now - g.hb > GUEST_TIMEOUT_MS) return;
+        if (g.spectator) {
+          // Spectators keep receiving broadcasts from the new host.
+          const pi = this.peers.length;
+          this.peers.push({ guestId: gid, name: g.name || '?', spectator: true });
+          this._guestHb[gid] = g.hb || 0;
+          spectatorPeers.push(pi);
+          return;
+        }
         const pIdx = g.playerIndex;
         if (!Number.isInteger(pIdx) || pIdx < 0) return;
-        if (g.hb && now - g.hb > GUEST_TIMEOUT_MS) return;
         const pi = this.peers.length;
         this.peers.push({ guestId: gid, name: g.name || '?' });
         this._guestHb[gid] = g.hb || 0;
         guestMap[pIdx] = pi;
       });
     }
+    this.promotedSpectators = spectatorPeers;
     // Host listeners.
     this._track(db.ref(`${ROOMS_PATH}/${code}/guests`), (s) => this._onGuests(s));
     this._track(db.ref(`${ROOMS_PATH}/${code}/msgs/toHost`), (s) => this._onHostInbox(s));

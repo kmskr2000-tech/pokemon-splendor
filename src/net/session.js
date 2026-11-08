@@ -7,6 +7,20 @@ import { NetRoom } from './webrtc.js';
 import { FirebaseRoom, writeMatch } from './fireroom.js';
 import { buildResults, cleanPid } from './stats.js';
 import { MSG, makeMsg, stateHash } from './protocol.js';
+import * as walletApi from '../wallet/wallet.js';
+import { currentUser } from '../wallet/auth.js';
+
+// Default wallet adapter (real Firebase). Tests inject a fake via opts.wallet.
+const defaultWallet = {
+  getUser: () => currentUser(),
+  createEscrow: walletApi.createEscrow,
+  payEntry: walletApi.payEntry,
+  placeBet: walletApi.placeBet,
+  startRoom: walletApi.startRoom,
+  reportResult: walletApi.reportResult,
+  cancelRoom: walletApi.cancelRoom,
+  watchEscrow: walletApi.watchEscrow,
+};
 
 const MAX_PLAYERS = 4;
 export const EMOTES = ['😂', '🖕', '⏰', '중국인'];
@@ -24,12 +38,13 @@ export class NetSession {
     this.usePeer = opts.usePeer !== false;
     this.myPid = cleanPid(opts.pid);
     this.writeMatch = opts.writeMatch || writeMatch; // injectable for tests
+    this.wallet = opts.wallet || defaultWallet; // money ops (Cloud Functions); injectable for tests
     this.reset();
   }
 
   reset() {
-    this.role = null; // 'host' | 'guest'
-    this.phase = 'menu'; // menu|hostname|hostoffer|hostlobby|guestname|guestjoin|guestanswer|guestlobby|busy|playing
+    this.role = null; // 'host' | 'guest' | 'spectator'
+    this.phase = 'menu'; // menu|hostname|hostoffer|hostlobby|guestname|guestjoin|guestanswer|guestlobby|spectlobby|busy|playing
     this.room = null;
     this.myName = '';
     this.myIndex = -1;
@@ -55,6 +70,112 @@ export class NetSession {
     this._emoteAt = {}; // seat -> last emote timestamp (cooldown)
     this.actionCount = 0; // host: applied actions (authoritative snapshot sequence)
     this._commitChain = Promise.resolve(); // host: ordered snapshot->broadcast chain
+    // ---- spectators / money ----
+    this.uids = []; // seat -> wallet uid ('' when that player is not signed in)
+    this.myUid = ''; // my wallet uid ('' when signed out)
+    this.spectatorPeers = new Set(); // host: peer indices that only watch
+    this.spectatorCount = 0; // everyone: head count shown in lobby/header
+    this.entryFee = 0; // per-room entry fee in won (0 = free)
+    this.escrow = null; // live escrow node (players paid, bets, settlement) or null when no wallet
+    this._escrowUnwatch = null;
+    this._resultSent = false;
+    this.busyMoney = false; // a wallet call is in flight (disables buttons)
+  }
+
+  // ---------- wallet helpers ----------
+
+  _refreshUid() {
+    try { const u = this.wallet.getUser && this.wallet.getUser(); this.myUid = (u && u.uid) || ''; } catch { this.myUid = ''; }
+    return this.myUid;
+  }
+
+  _watchEscrow(code) {
+    this._unwatchEscrow();
+    if (!code || typeof this.wallet.watchEscrow !== 'function') return;
+    try {
+      this._escrowUnwatch = this.wallet.watchEscrow(code, (e) => {
+        this.escrow = e;
+        if (e && Number.isInteger(e.entryFee)) this.entryFee = e.entryFee;
+        this.cb.onRender();
+      });
+    } catch { this._escrowUnwatch = null; }
+  }
+
+  _unwatchEscrow() {
+    if (this._escrowUnwatch) { try { this._escrowUnwatch(); } catch {} this._escrowUnwatch = null; }
+    this.escrow = null;
+  }
+
+  roomCode() {
+    return (this.room && this.room.code) || this.shortCode || this.lastCode || '';
+  }
+
+  /** Has this seat's player paid the entry fee? (free rooms: always true) */
+  hasPaid(seat) {
+    if (!(this.entryFee > 0)) return true;
+    const uid = this.uids[seat];
+    return !!(uid && this.escrow && this.escrow.players && this.escrow.players[uid] && Number(this.escrow.players[uid].amount) >= this.entryFee);
+  }
+
+  /** Every human seat has paid (host included). */
+  allPaid() {
+    if (!(this.entryFee > 0)) return true;
+    return this.names.every((_, i) => this.hasPaid(i));
+  }
+
+  /** Betting is open until the host starts the game + grace (server enforces the real cutoff). */
+  betOpen() {
+    const e = this.escrow;
+    if (!e || e.status === 'settled' || e.status === 'cancelled' || e.status === 'disputed') return false;
+    if (e.betCloseAt && Date.now() > e.betCloseAt) return false;
+    return true;
+  }
+
+  async _money(label, fn) {
+    if (this.busyMoney) return false;
+    this.busyMoney = true;
+    this.cb.onRender();
+    try {
+      await fn();
+      return true;
+    } catch (e) {
+      this.cb.onNotice(`${label} 실패: ${(e && e.message) || '알 수 없는 오류'}`);
+      return false;
+    } finally {
+      this.busyMoney = false;
+      this.cb.onRender();
+    }
+  }
+
+  /** Player: pay this room's entry fee from my wallet. */
+  payEntry() {
+    const code = this.roomCode();
+    if (!code || !(this.entryFee > 0)) return;
+    if (!this._refreshUid()) { this.cb.onNotice('참가비를 내려면 로그인이 필요해요.'); return; }
+    return this._money('참가비 결제', () => this.wallet.payEntry(code, this.myName));
+  }
+
+  /** Spectator (or anyone not seated): bet on a player's uid. */
+  placeBet(targetUid, amount) {
+    const code = this.roomCode();
+    if (!code) return;
+    if (!this._refreshUid()) { this.cb.onNotice('베팅하려면 로그인이 필요해요.'); return; }
+    if (this.uids.includes(this.myUid) && this.myIndex >= 0) { this.cb.onNotice('참가자는 베팅할 수 없어요.'); return; }
+    if (!this.uids.includes(targetUid)) { this.cb.onNotice('베팅 대상을 다시 골라주세요.'); return; }
+    return this._money('베팅', () => this.wallet.placeBet(code, targetUid, amount));
+  }
+
+  /** Both: once the game is over, send my view of the final ranking to the settlement function. */
+  reportResult() {
+    if (this._resultSent || !this.ctrl || !this.ctrl.finished || !this.escrow) return;
+    if (this.role !== 'host' && this.myIndex < 0) return; // spectators don't vote
+    if (!this._refreshUid()) return;
+    this._resultSent = true;
+    const code = this.roomCode();
+    const ranking = (this.ctrl.game.ranking || [])
+      .filter((r) => r.player < this.names.length)
+      .map((r) => ({ uid: this.uids[r.player] || '', rank: r.rank }));
+    Promise.resolve(this.wallet.reportResult(code, ranking)).catch(() => {});
   }
 
   // Rejoin persistence (guest): remember code+playerIndex so an accidental
@@ -90,8 +211,14 @@ export class NetSession {
       onjoin: () => {
         // Guest: connection open -> introduce ourselves; host replies with welcome+roster.
         // Include rejoin seat if we have one for this room code.
+        if (this.role === 'spectator' && this.room) {
+          this.room.send(makeMsg(MSG.HELLO, { name: this.myName, uid: this.myUid, spectator: true }));
+          this.phase = 'spectlobby';
+          this.cb.onRender();
+          return;
+        }
         if (this.role === 'guest' && this.room) {
-          const hello = { name: this.myName, pid: this.myPid };
+          const hello = { name: this.myName, pid: this.myPid, uid: this.myUid };
           const rj = this.usePeer && this.lastCode ? this.loadRejoin(this.lastCode) : null;
           if (rj) hello.rejoin = rj.playerIndex;
           this.room.send(makeMsg(MSG.HELLO, hello));
@@ -103,8 +230,12 @@ export class NetSession {
       onreconnect: () => {
         // Guest socket dropped and came back after the host already saw us leave:
         // re-send HELLO with our saved seat so the host hands it back from AI.
+        if (this.role === 'spectator' && this.room && this.phase === 'playing') {
+          this.room.send(makeMsg(MSG.HELLO, { name: this.myName, uid: this.myUid, spectator: true }));
+          return;
+        }
         if (this.role === 'guest' && this.room && this.phase === 'playing') {
-          const hello = { name: this.myName, pid: this.myPid };
+          const hello = { name: this.myName, pid: this.myPid, uid: this.myUid };
           const rj = this.usePeer && this.lastCode ? this.loadRejoin(this.lastCode) : null;
           if (rj) hello.rejoin = rj.playerIndex;
           this.room.send(makeMsg(MSG.HELLO, hello));
@@ -119,12 +250,21 @@ export class NetSession {
 
   // ---------- host ----------
 
-  async hostCreate(name, title = '', turnLimitMs = DEFAULT_TURN_LIMIT_MS) {
+  async hostCreate(name, title = '', turnLimitMs = DEFAULT_TURN_LIMIT_MS, entryFee = 0) {
     this.role = 'host';
     this.myName = this.cleanName(name);
     this.turnLimitMs = turnLimitMs;
+    this.entryFee = Math.max(0, Math.floor(Number(entryFee) || 0));
+    this._refreshUid();
+    if (this.entryFee > 0 && !this.myUid) {
+      this.phase = 'hostname';
+      this.cb.onNotice('참가비가 있는 방은 로그인 후 만들 수 있어요.');
+      this.cb.onRender();
+      return;
+    }
     this.names = [this.myName];
     this.pids = [this.myPid];
+    this.uids = [this.myUid];
     this.myIndex = 0;
     this.room = this.makeRoom();
     // Guest connections arrive via onMsg(hello) in both transports.
@@ -133,10 +273,22 @@ export class NetSession {
     this.cb.onRender();
     try {
       if (this.usePeer) {
-        this.shortCode = await this.room.hostCreate(this.myName, title, this.turnLimitMs);
+        this.shortCode = await this.room.hostCreate(this.myName, title, this.turnLimitMs, this.entryFee);
         // Remember the room so the host can rejoin their own seat (index 0)
         // after a disconnect, once a guest has taken over as host.
         this.saveRejoin(this.shortCode, 0);
+        // Escrow (entry fees + bets) lives server-side. Signed-in hosts open one
+        // even for free rooms so spectators can bet; signed-out hosts get a plain room.
+        if (this.myUid) {
+          if (typeof this.room.setHostUid === 'function') this.room.setHostUid(this.myUid).catch(() => {});
+          try {
+            await this.wallet.createEscrow(this.shortCode, this.entryFee, this.myName);
+          } catch (e) {
+            if (this.entryFee > 0) throw e; // paid room without escrow is unusable
+            // free room: betting simply unavailable
+          }
+          this._watchEscrow(this.shortCode);
+        }
         this.phase = 'hostlobby';
       } else {
         const { peerIdx, code } = await this.room.createOffer();
@@ -144,9 +296,12 @@ export class NetSession {
         this.offerCode = code;
         this.phase = 'hostoffer';
       }
-    } catch {
+    } catch (e) {
+      try { this.room?.close(); } catch {}
+      this.room = null;
       this.phase = 'hostname';
-      this.cb.onNotice('방 생성에 실패했어요. 다시 시도해주세요.');
+      const why = e && e.message && !/room-create-failed/.test(e.message) ? ` (${e.message})` : '';
+      this.cb.onNotice(`방 생성에 실패했어요. 다시 시도해주세요.${why}`);
     }
     this.cb.onRender();
   }
@@ -192,6 +347,9 @@ export class NetSession {
     this.room.broadcast(makeMsg(MSG.ROSTER, {
       names: this.names,
       pids: this.pids,
+      uids: this.uids,
+      spectators: this.spectatorCount,
+      entryFee: this.entryFee,
       aiTakeover: Object.keys(this.aiTakeover).map(Number),
     }));
   }
@@ -204,13 +362,24 @@ export class NetSession {
     return out;
   }
 
-  hostStart() {
+  async hostStart() {
     const total = this.names.length + this.aiCount;
     if (this.names.length < 1 || total < 2 || total > MAX_PLAYERS) return;
+    if (this.phase !== 'hostlobby' || this.busyMoney) return;
+    if (this.entryFee > 0 && !this.allPaid()) {
+      this.cb.onNotice('아직 참가비를 내지 않은 참가자가 있어요.');
+      this.cb.onRender();
+      return;
+    }
+    // Lock the escrow first (server re-checks payments and sets the bet cutoff).
+    if (this.escrow) {
+      const ok = await this._money('게임 시작', () => this.wallet.startRoom(this.roomCode(), this.uids.slice(0, this.names.length)));
+      if (!ok || this.phase !== 'hostlobby') return;
+    }
     const seed = (crypto.getRandomValues(new Uint32Array(1))[0] || 1);
     this.aiNames = this.pickAiNames();
     this.beginGame(seed, [...this.names], 0, this.aiNames);
-    this.room.broadcast(makeMsg(MSG.START, { seed, names: this.names, pids: this.pids, aiNames: this.aiNames, turnLimitMs: this.turnLimitMs }));
+    this.room.broadcast(makeMsg(MSG.START, { seed, names: this.names, pids: this.pids, uids: this.uids, aiNames: this.aiNames, turnLimitMs: this.turnLimitMs, entryFee: this.entryFee }));
     // Mark room as started so it disappears from lobby. Also write start info
     // as a fallback in case the broadcast message is missed.
     if (this.room && typeof this.room.markStarted === 'function') {
@@ -221,6 +390,7 @@ export class NetSession {
   hostMsg(peerIdx, m) {
     switch (m.t) {
       case MSG.HELLO: {
+        if (m.spectator) { this.acceptSpectator(peerIdx); return; }
         // Rejoin mid-game? Hand the AI-driven seat back to the returning human.
         if (this.phase === 'playing') {
           const rIdx = m.rejoin;
@@ -231,12 +401,15 @@ export class NetSession {
             }
             this.peerToPlayer[peerIdx] = rIdx;
             if (cleanPid(m.pid)) this.pids[rIdx] = m.pid;
+            if (typeof m.uid === 'string' && m.uid && !this.uids[rIdx]) this.uids[rIdx] = m.uid;
             if (this.room && typeof this.room.setGuestPlayerIndex === 'function') {
               this.room.setGuestPlayerIndex(peerIdx, rIdx);
             }
             this.room.sendTo(peerIdx, makeMsg(MSG.REJOIN_OK, {
               playerIndex: rIdx, seed: this.seed, names: this.names,
-              aiNames: this.aiNames, pids: this.pids, aiTakeover: Object.keys(this.aiTakeover).map(Number),
+              aiNames: this.aiNames, pids: this.pids, uids: this.uids, entryFee: this.entryFee,
+              spectators: this.spectatorCount,
+              aiTakeover: Object.keys(this.aiTakeover).map(Number),
               state: this.ctrl.game,
             }));
             this.broadcastRoster();
@@ -251,11 +424,12 @@ export class NetSession {
         const idx = this.names.length;
         this.names.push(this.cleanName(m.name));
         this.pids[idx] = cleanPid(m.pid);
+        this.uids[idx] = typeof m.uid === 'string' ? m.uid.slice(0, 64) : '';
         this.peerToPlayer[peerIdx] = idx;
         if (this.room && typeof this.room.setGuestPlayerIndex === 'function') {
           this.room.setGuestPlayerIndex(peerIdx, idx);
         }
-        this.room.sendTo(peerIdx, makeMsg(MSG.WELCOME, { playerIndex: idx }));
+        this.room.sendTo(peerIdx, makeMsg(MSG.WELCOME, { playerIndex: idx, entryFee: this.entryFee }));
         this.broadcastRoster();
         this.offerCode = '';
         this.phase = 'hostlobby';
@@ -299,9 +473,11 @@ export class NetSession {
 
   // ---------- guest ----------
 
-  async guestJoin(name, code) {
-    this.role = 'guest';
+  async guestJoin(name, code, opts = {}) {
+    const spectator = !!opts.spectator && this.usePeer;
+    this.role = spectator ? 'spectator' : 'guest';
     this.myName = this.cleanName(name);
+    this._refreshUid();
     this.room = this.makeRoom();
     this.phase = 'busy';
     this.cb.onRender();
@@ -312,7 +488,9 @@ export class NetSession {
         await this.room.guestJoin(clean, (attempt) => {
           this.cb.onNotice(`연결 재시도 중... (${attempt}/2)`);
           this.cb.onRender();
-        });
+        }, { spectator, rejoin: !!this.loadRejoin(clean) });
+        if (Number.isInteger(this.room.entryFee)) this.entryFee = this.room.entryFee;
+        this._watchEscrow(clean);
         // Register display name for lobby.
         if (typeof this.room.setGuestName === 'function') {
           this.room.setGuestName(this.myName).catch(() => {});
@@ -326,9 +504,13 @@ export class NetSession {
       }
     } catch (e) {
       this.phase = 'guestjoin';
+      this.role = null;
+      this._unwatchEscrow();
       const msg = e && e.message;
       if (msg === 'room-not-found') {
         this.cb.onNotice('해당 코드의 방을 찾을 수 없어요. 방장이 방을 다시 만들어주세요.');
+      } else if (msg === 'room-started') {
+        this.cb.onNotice('이미 시작된 게임이에요. 관전으로 들어갈 수 있어요.');
       } else if (msg === 'cancelled') {
         this.cb.onNotice('연결을 취소했어요.');
       } else if (this.usePeer) {
@@ -358,11 +540,39 @@ export class NetSession {
         }
         break;
       case MSG.WELCOME:
+        if (this.role === 'spectator') break;
         this.myIndex = m.playerIndex;
+        if (Number.isInteger(m.entryFee)) this.entryFee = m.entryFee;
         if (this.usePeer && this.lastCode) this.saveRejoin(this.lastCode, m.playerIndex);
         break;
-      case MSG.REJOIN_OK:
+      case MSG.SPECTATE_OK: {
+        if (this.role !== 'spectator') break;
+        this.names = m.names || [];
+        this.uids = Array.isArray(m.uids) ? m.uids : [];
         if (Array.isArray(m.pids)) this.pids = m.pids;
+        if (Number.isInteger(m.entryFee)) this.entryFee = m.entryFee;
+        if (Number.isInteger(m.spectators)) this.spectatorCount = m.spectators;
+        if (m.turnLimitMs) this.turnLimitMs = m.turnLimitMs;
+        if (m.state) {
+          // Game already running: mirror it from the authoritative state.
+          this.beginGame(m.seed, this.names, -1, m.aiNames || []);
+          this.ctrl.game = m.state;
+          this._applyTakeover(m.aiTakeover, this.names.length);
+        } else {
+          this.phase = 'spectlobby';
+        }
+        this.cb.onRender();
+        break;
+      }
+      case MSG.SPECTATORS:
+        if (Number.isInteger(m.n)) { this.spectatorCount = m.n; this.cb.onRender(); }
+        break;
+      case MSG.REJOIN_OK:
+        if (this.role === 'spectator') break;
+        if (Array.isArray(m.pids)) this.pids = m.pids;
+        if (Array.isArray(m.uids)) this.uids = m.uids;
+        if (Number.isInteger(m.entryFee)) this.entryFee = m.entryFee;
+        if (Number.isInteger(m.spectators)) this.spectatorCount = m.spectators;
         // Rejoin accepted: rebuild at the given seat, then take the live state.
         this.beginGame(m.seed, m.names, m.playerIndex, m.aiNames || []);
         this.ctrl.game = m.state;
@@ -382,6 +592,9 @@ export class NetSession {
       case MSG.ROSTER:
         this.names = m.names;
         if (Array.isArray(m.pids)) this.pids = m.pids;
+        if (Array.isArray(m.uids)) this.uids = m.uids;
+        if (Number.isInteger(m.entryFee)) this.entryFee = m.entryFee;
+        if (Number.isInteger(m.spectators)) this.spectatorCount = m.spectators;
         // Sync AI-takeover seats (host converts disconnected seats to AI).
         if (this.ctrl && Array.isArray(m.aiTakeover)) {
           const take = new Set(m.aiTakeover);
@@ -392,13 +605,15 @@ export class NetSession {
             p.isAI = i >= humanCount || take.has(i);
           });
         }
-        if (this.phase !== 'playing') this.phase = 'guestlobby';
+        if (this.phase !== 'playing') this.phase = this.role === 'spectator' ? 'spectlobby' : 'guestlobby';
         this.cb.onRender();
         break;
       case MSG.START:
         if (Array.isArray(m.pids)) this.pids = m.pids;
+        if (Array.isArray(m.uids)) this.uids = m.uids;
+        if (Number.isInteger(m.entryFee)) this.entryFee = m.entryFee;
         if (m.turnLimitMs) this.turnLimitMs = m.turnLimitMs;
-        this.beginGame(m.seed, m.names, this.myIndex, m.aiNames || []);
+        this.beginGame(m.seed, m.names, this.role === 'spectator' ? -1 : this.myIndex, m.aiNames || []);
         break;
       case MSG.ACTION: {
         if (this.phase !== 'playing' || !this.ctrl) return;
@@ -415,6 +630,7 @@ export class NetSession {
           this.room.send(makeMsg(MSG.SYNC_REQ, {}));
         }
         this.saveMatch();
+        if (this.ctrl.finished) this.reportResult();
         break;
       }
       case MSG.SYNC:
@@ -422,9 +638,51 @@ export class NetSession {
           this.ctrl.game = m.state;
           this.cb.onRender();
           this.saveMatch();
+          if (this.ctrl.finished) this.reportResult();
         }
         break;
     }
+  }
+
+  // ---------- spectators ----------
+
+  /** Host: a watch-only peer said hello. Never seated; receives every broadcast. */
+  acceptSpectator(peerIdx) {
+    if (this.peerToPlayer[peerIdx] != null) return; // a seated player can't switch to watching
+    const isNew = !this.spectatorPeers.has(peerIdx);
+    this.spectatorPeers.add(peerIdx);
+    this.spectatorCount = this.spectatorPeers.size;
+    const body = {
+      names: this.names, uids: this.uids, pids: this.pids, aiNames: this.aiNames,
+      turnLimitMs: this.turnLimitMs, entryFee: this.entryFee, spectators: this.spectatorCount,
+    };
+    if (this.phase === 'playing' && this.ctrl) {
+      body.seed = this.seed;
+      body.state = this.ctrl.game;
+      body.aiTakeover = Object.keys(this.aiTakeover).map(Number);
+    }
+    this.room.sendTo(peerIdx, makeMsg(MSG.SPECTATE_OK, body));
+    if (isNew) {
+      this.room.broadcast(makeMsg(MSG.SPECTATORS, { n: this.spectatorCount }), peerIdx);
+      this.cb.onRender();
+    }
+  }
+
+  /** Host: a spectator peer left. */
+  _spectatorLeft(peerIdx) {
+    if (!this.spectatorPeers.delete(peerIdx)) return false;
+    this.spectatorCount = this.spectatorPeers.size;
+    this.room.broadcast(makeMsg(MSG.SPECTATORS, { n: this.spectatorCount }));
+    this.cb.onRender();
+    return true;
+  }
+
+  _applyTakeover(list, humanCount) {
+    if (!this.ctrl || !Array.isArray(list)) return;
+    const take = new Set(list);
+    this.aiTakeover = {};
+    list.forEach((i) => { this.aiTakeover[i] = true; });
+    this.ctrl.game.players.forEach((p, i) => { p.isAI = i >= humanCount || take.has(i); });
   }
 
   // ---------- emoticons (stateless: no ACTION, no hash, no log/save) ----------
@@ -462,7 +720,7 @@ export class NetSession {
       return;
     }
     if (this.role === 'host') this.hostMsg(peerIdx, m);
-    else this.guestMsg(m);
+    else this.guestMsg(m); // guests and spectators share the mirror protocol
   }
 
   beginGame(seed, names, myIndex, aiNames = []) {
@@ -473,6 +731,10 @@ export class NetSession {
     const ctrl = createController({ cards: CARDS, seed, mp: { names, me: myIndex, aiNames }, hooks: {}, difficulty: 'hard' });
     const raw = ctrl.dispatch.bind(ctrl);
     const self = this;
+    // Spectators mirror the game with no seat (me = -1): nothing is ever dispatched locally.
+    ctrl.spectator = myIndex < 0;
+    ctrl.mp.spectator = ctrl.spectator;
+    ctrl.mp.getSpectators = () => self.spectatorCount;
     // Expose turn timer to UI via mp object.
     ctrl.mp.getTurnRemaining = () => self.getTurnRemaining();
     ctrl.dispatch = (action) => {
@@ -496,6 +758,7 @@ export class NetSession {
     this.myIndex = myIndex;
     this.phase = 'playing';
     this._matchSaved = false;
+    this._resultSent = false;
     this.actionCount = 0;
     this._commitChain = Promise.resolve();
     this.resetTurnTimer();
@@ -581,7 +844,11 @@ export class NetSession {
     }
     this.room.broadcast(makeMsg(MSG.ACTION, { from: fromIdx, action, h }), except);
     this.cb.onRender();
-    if (this.ctrl.finished) this.saveMatch();
+    if (this.ctrl.finished) {
+      this.saveMatch();
+      this.reportResult();
+      if (typeof this.room.markFinished === 'function') this.room.markFinished().catch(() => {});
+    }
   }
 
   /**
@@ -591,6 +858,7 @@ export class NetSession {
    */
   saveMatch() {
     if (this._matchSaved || !this.ctrl || !this.ctrl.finished || !this.usePeer) return;
+    if (this.role === 'spectator') return;
     this._matchSaved = true;
     const code = (this.room && this.room.code) || this.shortCode || this.lastCode || '';
     const pids = [...(this.pids || [])];
@@ -616,6 +884,13 @@ export class NetSession {
   }
 
   onLeave(peerIdx) {
+    if (this.role === 'host' && this._spectatorLeft(peerIdx)) return;
+    if (this.role === 'spectator') {
+      // Host gone: spectators never promote; wait for a guest to take over.
+      this.cb.onNotice('📡 방장의 연결이 끊겼어요. 승계를 기다리는 중...');
+      this.cb.onRender();
+      return;
+    }
     if (this.phase === 'playing') {
       if (this.role === 'host') {
         const pIdx = this.peerToPlayer[peerIdx];
@@ -637,6 +912,8 @@ export class NetSession {
       if (pIdx == null) return;
       delete this.peerToPlayer[peerIdx];
       this.names.splice(pIdx, 1);
+      this.pids.splice(pIdx, 1);
+      this.uids.splice(pIdx, 1);
       for (const k of Object.keys(this.peerToPlayer)) {
         if (this.peerToPlayer[k] > pIdx) this.peerToPlayer[k] -= 1;
       }
@@ -692,7 +969,7 @@ export class NetSession {
 
   /** Guest: someone else became the new host. Resume as guest. */
   onHostBack() {
-    if (this.phase !== 'playing' || this.role !== 'guest') return;
+    if (this.phase !== 'playing' || (this.role !== 'guest' && this.role !== 'spectator')) return;
     this._waitingForHost = 0;
     this.cb.onNotice('📡 새 방장이 게임을 이어받았어요.');
     this.cb.onRender();
@@ -700,7 +977,7 @@ export class NetSession {
 
   /** Guest: room node deleted = host ended the game intentionally. */
   onRoomDeleted() {
-    if (this.role !== 'guest') return;
+    if (this.role !== 'guest' && this.role !== 'spectator') return;
     if (this.phase === 'playing') {
       this.cb.onNotice('📡 방장이 게임을 종료했어요.');
     } else {
@@ -734,6 +1011,8 @@ export class NetSession {
     this.role = 'host';
     const guestMap = await this.room.promoteToHost(this.myName);
     this.peerToPlayer = guestMap;
+    this.spectatorPeers = new Set(Array.isArray(this.room.promotedSpectators) ? this.room.promotedSpectators : []);
+    this.spectatorCount = this.spectatorPeers.size;
     if (inGame && this.ctrl) {
       if (snap && snap.state && snap.h) {
         // Keep the snapshot sequence monotonic even when the mirror is fine.
@@ -774,6 +1053,12 @@ export class NetSession {
     this.stopTurnTimer();
     this._promoting = false;
     this._waitingForHost = 0;
+    // Host closes an unstarted paid room: refund every entry fee (server-side).
+    if (this.role === 'host' && this.escrow && this.escrow.status === 'open' && this.phase !== 'playing') {
+      const code = this.roomCode();
+      if (code) Promise.resolve(this.wallet.cancelRoom(code)).catch(() => {});
+    }
+    this._unwatchEscrow();
     try { this.room?.close(); } catch { /* noop */ }
     this.clearRejoin();
     this.reset();

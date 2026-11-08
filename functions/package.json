@@ -1,0 +1,17 @@
+{
+  "name": "pokemon-splendor-wallet",
+  "description": "Wallet, escrow and settlement functions for Pokemon Splendor multiplayer",
+  "private": true,
+  "type": "module",
+  "engines": { "node": "20" },
+  "main": "index.js",
+  "scripts": {
+    "serve": "firebase emulators:start --only functions,database",
+    "deploy": "firebase deploy --only functions,database",
+    "test": "node --test ../tests/*.test.mjs"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.1.0",
+    "firebase-functions": "^5.0.1"
+  }
+}

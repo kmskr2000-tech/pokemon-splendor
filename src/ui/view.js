@@ -7,6 +7,8 @@ import { BALLS, TRAINERS, evoText } from './controller.js';
 import { dexSummary } from '../storage/store.js';
 import { ACHIEVEMENTS } from '../data/achievements.js';
 import { CHALLENGES, challengeProgress } from '../data/challenges.js';
+import { fmtWon } from '../wallet/wallet.js';
+import { betOdds } from '../wallet/settle.js';
 
 const diffLabel = { easy: '쉬움', normal: '보통', hard: '어려움' };
 
@@ -86,10 +88,12 @@ export function headerHTML(ctrl) {
   const s = ctrl.state;
   let badge;
   if (ctrl.finished) badge = '게임 종료';
+  else if (ctrl.spectator) badge = `${ctrl.current.name} 차례`;
   else if (ctrl.isHumanTurn) badge = '▶ 당신의 차례';
   else badge = `${ctrl.current.name} 차례`;
   const last = ctrl.lastRound ? `<div class="lastround">마지막 라운드! ${s.players[s.endTriggeredBy].name}이(가) 21점 달성</div>` : '';
-  const netbadge = ctrl.mp ? `<div class="netbadge">📡 대전 ${ctrl.mp.names.length}인</div>` : '';
+  const specN = ctrl.mp && typeof ctrl.mp.getSpectators === 'function' ? ctrl.mp.getSpectators() : 0;
+  const netbadge = ctrl.mp ? `<div class="netbadge">${ctrl.mp.spectator ? '👁 관전 중 · ' : '📡 대전 '}${ctrl.mp.names.length}인${specN ? ` · 👁${specN}` : ''}</div>` : '';
   // Turn timer for multiplayer (90s limit).
   let timerHtml = '';
   if (ctrl.mp && typeof ctrl.mp.getTurnRemaining === 'function' && !ctrl.finished) {
@@ -404,7 +408,8 @@ export function startHTML({ save = null, dex = null, cards = [], options = null,
     <button class="btn alt" data-action="records">📊 기록</button>
     <button class="btn alt" data-action="challenge">🎯 챌린지</button></div>
     <div class="btnrow"><button class="btn primary" data-action="tutorial">튜토리얼 (처음 하세요?)</button></div>
-    <div class="btnrow"><button class="btn primary" data-action="net">📡 대전 (2~4인 멀티플레이)</button></div>
+    <div class="btnrow"><button class="btn primary" data-action="net">📡 대전 (2~4인 멀티플레이)</button>
+    <button class="btn alt" data-action="wallet">💰 지갑</button></div>
   </div></div>`;
 }
 
@@ -557,13 +562,13 @@ export function dexHTML(dex, cards, detailId = null) {
   </div></div>`;
 }
 
-export function endHTML(ctrl) {
+export function endHTML(ctrl, extra = '') {
   const s = ctrl.state;
   const rows = s.ranking.map((r) => {
     const p = s.players[r.player];
-    return `<tr class="${r.rank === 1 ? 'win' : ''} ${p.id === ctrl.human ? 'me' : ''}"><td>${r.rank}</td><td>${p.isAI ? 'AI ' : ''}${p.name}</td><td>${r.points}점</td><td>진화 ${r.evolutions}</td><td>${r.pokemon}마리</td></tr>`;
+    return `<tr class="${r.rank === 1 ? 'win' : ''} ${p.id === ctrl.human ? 'me' : ''}"><td>${r.rank}</td><td>${p.isAI ? 'AI ' : ''}${esc(p.name)}</td><td>${r.points}점</td><td>진화 ${r.evolutions}</td><td>${r.pokemon}마리</td></tr>`;
   }).join('');
-  const top = s.ranking[0].player === ctrl.human;
+  const top = !ctrl.spectator && s.ranking[0].player === ctrl.human;
   const scoreLine = ctrl.lastScore != null
     ? `<p class="scoreline">승리 점수 <b>${ctrl.lastScore}</b>${ctrl.lastBest ? ' <span class="newbest">NEW!</span>' : ''}</p>`
     : '';
@@ -571,6 +576,7 @@ export function endHTML(ctrl) {
     <div class="title big">${top ? '우승!' : '게임 종료'}<small>${s.stalled ? '아무도 행동할 수 없어 종료됐어요' : '최종 순위'}</small></div>
     <table class="rank">${rows}</table>
     ${scoreLine}
+    ${extra}
     <p class="sheet-p">동점은 진화 횟수가 많은 쪽 → 앞면 포켓몬 수가 적은 쪽이 이겨요.</p>
     <div class="btnrow"><button class="btn alt" data-action="dex">도감</button>
     <button class="btn primary" data-action="restart">다시 하기</button></div>
@@ -690,9 +696,24 @@ export function netHelpHTML() {
   </div></div>`;
 }
 
-export function netHTML(net, notice = '') {
+/** Lobby wallet strip: balance + shortcuts, or a login prompt. */
+export function walletBarHTML(w) {
+  if (!w || !w.available) return '';
+  if (!w.user) {
+    return `<div class="walletbar"><span>💰 참가비·베팅은 로그인 후 이용</span><button class="aibtn" data-action="wallet-login">로그인</button></div>`;
+  }
+  return `<div class="walletbar"><span>💰 잔액 <b>${fmtWon(w.balance)}</b></span>
+    <span class="walletbtns"><button class="aibtn" data-action="wallet">지갑</button>${w.admin ? '<button class="aibtn adm" data-action="wallet-admin">운영</button>' : ''}</span></div>`;
+}
+
+const paidMark = (net, i) => (net.entryFee > 0 ? (net.hasPaid(i) ? ' <span class="paid">💰 납부</span>' : ' <span class="unpaid">⏳ 미납</span>') : '');
+
+export function netHTML(net, notice = '', wallet = null, betUi = null) {
   const roster = net.names.map((name, i) =>
-    `<div class="roster-row">${i === 0 ? '👑' : '🎮'} ${esc(name)}${i === net.myIndex ? ' (나)' : ''}</div>`).join('');
+    `<div class="roster-row">${i === 0 ? '👑' : '🎮'} ${esc(name)}${i === net.myIndex ? ' (나)' : ''}${paidMark(net, i)}</div>`).join('');
+  const feeLine = net.entryFee > 0 ? `<p class="sheet-p feeline">💰 참가비 <b>${fmtWon(net.entryFee)}</b> · 우승자가 상금(수수료 제외)을 가져가요.</p>` : '';
+  const payBtn = net.entryFee > 0 && net.myIndex >= 0 && !net.hasPaid(net.myIndex)
+    ? `<div class="btnrow"><button class="btn primary" data-action="net-pay" ${net.busyMoney ? 'disabled' : ''}>💰 참가비 ${fmtWon(net.entryFee)} 내기</button></div>` : '';
   let body = '';
   switch (net.phase) {
     case 'menu': {
@@ -700,16 +721,27 @@ export function netHTML(net, notice = '') {
         ? '<button class="btn ghost" data-action="net-manual">수동 연결 (서버 없이)</button>'
         : '<button class="btn ghost" data-action="net-peer">간편 연결로 돌아가기</button>';
       // Lobby: show room list
-      const rooms = net.roomList || [];
+      const rooms = (net.roomList || []).filter((r) => !r.started);
+      const live = (net.roomList || []).filter((r) => r.started);
+      const feeTag = (r) => (r.entryFee > 0 ? ` · 💰 ${fmtWon(r.entryFee)}` : '');
       const roomHtml = rooms.length === 0
         ? '<p class="sheet-p">열린 방이 없어요. 방을 만들어보세요!</p>'
         : rooms.map((r) => `
           <div class="roomitem" data-action="net-lobby-join" data-code="${esc(r.code)}">
             <div class="roomtitle">${esc(r.title)}</div>
-            <div class="roommeta">👑 ${esc(r.hostName)} · ${r.playerCount}/4명 · ⏱ ${Math.round((r.turnLimitMs || 45000) / 1000)}초</div>
+            <div class="roommeta">👑 ${esc(r.hostName)} · ${r.playerCount}/4명 · ⏱ ${Math.round((r.turnLimitMs || 45000) / 1000)}초${feeTag(r)}${r.spectators ? ` · 👁${r.spectators}` : ''}</div>
+            <div class="roomact"><button class="aibtn" data-action="net-spectate" data-code="${esc(r.code)}">👁 관전·베팅</button></div>
           </div>`).join('');
-      body = `<p class="sheet-p">친구와 대전해요. 방을 골라 입장하세요. (2~4인)</p>
+      const liveHtml = live.length === 0 ? '' : `<div class="difflabel">진행 중인 게임 (관전·베팅)</div>
+        <div class="roomlist">${live.map((r) => `
+          <div class="roomitem live" data-action="net-spectate" data-code="${esc(r.code)}">
+            <div class="roomtitle">👁 ${esc(r.title)}</div>
+            <div class="roommeta">👑 ${esc(r.hostName)} · ${r.playerCount}명 대전 중${feeTag(r)}${r.spectators ? ` · 👁${r.spectators}` : ''}</div>
+          </div>`).join('')}</div>`;
+      body = `${walletBarHTML(wallet)}
+        <p class="sheet-p">친구와 대전해요. 방을 골라 입장하세요. (2~4인)</p>
         <div class="roomlist">${roomHtml}</div>
+        ${liveHtml}
         ${(() => { const rj = typeof net.peekRejoin === 'function' ? net.peekRejoin() : null;
           return rj ? `<div class="btnrow"><button class="btn alt" data-action="net-rejoin" data-code="${esc(rj.code)}">📲 최근 방 이어하기 <small>${esc(rj.code)}</small></button></div>` : ''; })()}
         <div class="btnrow"><button class="btn primary" data-action="net-host">방 만들기</button>
@@ -722,6 +754,14 @@ export function netHTML(net, notice = '') {
     }
     case 'hostname': {
       const tl = net.pendingTurnLimit || 45000;
+      const fee = net.pendingFee || 0;
+      const fees = (wallet && wallet.config && wallet.config.entryFees) || [1000, 3000, 5000, 10000];
+      const feeBtns = [0, ...fees].map((f) =>
+        `<button class="aibtn ${fee === f ? 'sel' : ''}" data-action="net-fee" data-fee="${f}">${f === 0 ? '무료' : fmtWon(f)}</button>`).join('');
+      const feeRow = wallet && wallet.available
+        ? `<div class="airow col"><span>💰 참가비 <small>${wallet.user ? '' : '(로그인 필요)'}</small></span><div class="aibtns wrap">${feeBtns}</div></div>
+           ${fee > 0 ? `<p class="sheet-p"><small>참가자 전원이 참가비를 내야 시작할 수 있어요. 우승자가 상금을 받고, 운영 수수료 ${Math.round(((wallet.config && wallet.config.feeRate) || 0.1) * 100)}%가 차감돼요.</small></p>` : ''}`
+        : '';
       body = `<p class="sheet-p">대전에서 쓸 이름과 방 제목을 입력하세요.<br><small>이름은 다음부터 자동 입력돼요.</small></p>
         <input id="netname" class="netinput" maxlength="12" placeholder="이름" value="${esc(net.myName)}">
         <input id="nettitle" class="netinput" maxlength="20" placeholder="방 제목 (예: 초보 환영)" value="">
@@ -729,6 +769,7 @@ export function netHTML(net, notice = '') {
           <button class="aibtn ${tl === 20000 ? 'sel' : ''}" data-action="net-timelimit" data-ms="20000">20초</button>
           <button class="aibtn ${tl === 45000 ? 'sel' : ''}" data-action="net-timelimit" data-ms="45000">45초</button>
         </div></div>
+        ${feeRow}
         <div class="btnrow"><button class="btn primary" data-action="net-host-create">방 만들기</button>
         <button class="btn ghost" data-action="net-menu">뒤로</button></div>`;
       break;
@@ -757,13 +798,16 @@ export function netHTML(net, notice = '') {
       const aiBtns = [0, 1, 2, 3].filter((n) => n <= maxAi).map((n) =>
         `<button class="aibtn ${net.aiCount === n ? 'sel' : ''}" data-action="net-ai" data-n="${n}">${n === 0 ? '없음' : n + '명'}</button>`).join('');
       const total = net.names.length + net.aiCount;
+      const canStart = total >= 2 && net.allPaid() && !net.busyMoney;
       body = `${codeHtml}<div class="roster">${roster}</div>
-        <p class="sheet-p">⏱ 턴 시간제한: ${Math.round((net.turnLimitMs || 45000) / 1000)}초</p>
+        ${feeLine}${payBtn}
+        <p class="sheet-p">⏱ 턴 시간제한: ${Math.round((net.turnLimitMs || 45000) / 1000)}초${net.spectatorCount ? ` · 👁 관전 ${net.spectatorCount}명` : ''}</p>
         ${maxAi > 0 ? `<div class="airow"><span>🤖 남는 자리 AI로 채우기 <small>(어려움)</small></span><div class="aibtns">${aiBtns}</div></div>` : ''}
         <p class="sheet-p">${net.names.length}명${net.aiCount ? ` + AI ${net.aiCount}명` : ''} (총 ${total}인)</p>
+        ${net.escrow ? betSummaryHTML(net) : ''}
         <div class="btnrow">
         ${!net.usePeer && net.names.length < 4 ? '<button class="btn alt" data-action="net-host-invite">➕ 게스트 초대</button>' : ''}
-        <button class="btn primary" data-action="net-host-start" ${total < 2 ? 'disabled' : ''}>게임 시작</button>
+        <button class="btn primary" data-action="net-host-start" ${canStart ? '' : 'disabled'}>게임 시작</button>
         <button class="btn ghost" data-action="net-leave">나가기</button></div>`;
       break;
     }
@@ -786,7 +830,16 @@ export function netHTML(net, notice = '') {
       break;
     case 'guestlobby':
       body = `<div class="roster">${roster}</div>
-        <p class="sheet-p">방장이 게임을 시작하기를 기다리는 중...</p>
+        ${feeLine}${payBtn}
+        <p class="sheet-p">방장이 게임을 시작하기를 기다리는 중...${net.spectatorCount ? ` 👁 관전 ${net.spectatorCount}명` : ''}</p>
+        ${net.escrow ? betSummaryHTML(net) : ''}
+        <div class="btnrow"><button class="btn ghost" data-action="net-leave">나가기</button></div>`;
+      break;
+    case 'spectlobby':
+      body = `<div class="roster">${roster || '<div class="roster-row">참가자 명단을 받는 중...</div>'}</div>
+        ${feeLine}
+        <p class="sheet-p">👁 관전 모드 · 방장이 게임을 시작하면 자동으로 보여요.</p>
+        ${betPanelHTML(net, wallet, betUi)}
         <div class="btnrow"><button class="btn ghost" data-action="net-leave">나가기</button></div>`;
       break;
     default:
@@ -797,4 +850,177 @@ export function netHTML(net, notice = '') {
     ${notice ? `<p class="sheet-p warn">${esc(notice)}</p>` : ''}
     ${body}
   </div></div>`;
+}
+
+
+// ---------- betting / spectators ----------
+
+const uidName = (net, uid) => { const i = (net.uids || []).indexOf(uid); return i >= 0 ? net.names[i] : '?'; };
+
+/** Compact bet pool summary shown to players in the lobby. */
+export function betSummaryHTML(net) {
+  const e = net.escrow;
+  if (!e) return '';
+  const { pool, totals } = betOdds(e);
+  if (!pool) return `<p class="sheet-p"><small>👁 관전자 베팅 풀: 아직 없음</small></p>`;
+  const parts = Object.entries(totals).map(([uid, amt]) => `${esc(uidName(net, uid))} ${fmtWon(amt)}`).join(' · ');
+  return `<p class="sheet-p"><small>👁 베팅 풀 ${fmtWon(pool)} (${parts})</small></p>`;
+}
+
+/** Spectator bet panel: targets, pool/odds, amount, my bets, settlement. */
+export function betPanelHTML(net, wallet, betUi) {
+  const e = net.escrow;
+  if (!e) return `<p class="sheet-p"><small>이 방은 베팅이 열려 있지 않아요 (방장이 로그인하지 않은 방).</small></p>`;
+  const myUid = (wallet && wallet.user && wallet.user.uid) || '';
+  const { pool, totals, per1000 } = betOdds(e);
+  const feePct = Math.round((Number(e.feeRate) || 0.1) * 100);
+  const humans = net.names.map((n, i) => ({ name: n, uid: net.uids[i] || '' }));
+  const rows = humans.map((h) => {
+    const t = totals[h.uid] || 0;
+    const sel = betUi && betUi.target === h.uid;
+    const odds = t ? `1,000원당 ${(per1000[h.uid] || 0).toLocaleString('ko-KR')}원` : '첫 베팅!';
+    return `<button class="bettarget ${sel ? 'sel' : ''}" data-action="bet-target" data-uid="${esc(h.uid)}" ${h.uid ? '' : 'disabled'}>
+      <b>${esc(h.name)}</b><span>${h.uid ? `${fmtWon(t)} · ${odds}` : '로그인 안 한 참가자 (베팅 불가)'}</span></button>`;
+  }).join('');
+  const mine = Object.values(e.bets || {}).filter((b) => b && b.uid === myUid);
+  const mineHtml = mine.length
+    ? `<div class="mybets">내 베팅: ${mine.map((b) => `${esc(uidName(net, b.target))} ${fmtWon(b.amount)}`).join(' · ')}</div>` : '';
+  let form = '';
+  if (e.status === 'settled' || e.status === 'disputed' || e.status === 'cancelled') {
+    form = settlementHTML(net, myUid);
+  } else if (!net.betOpen()) {
+    form = '<p class="sheet-p"><small>베팅이 마감됐어요. 게임이 끝나면 정산돼요.</small></p>';
+  } else if (!myUid) {
+    form = '<div class="btnrow"><button class="btn alt" data-action="wallet-login">로그인하고 베팅하기</button></div>';
+  } else {
+    const amt = (betUi && betUi.amount) || 1000;
+    const presets = [1000, 3000, 5000, 10000].map((a) => `<button class="aibtn ${amt === a ? 'sel' : ''}" data-action="bet-amount" data-amt="${a}">${fmtWon(a)}</button>`).join('');
+    form = `<div class="airow col"><span>베팅 금액 <small>잔액 ${fmtWon(wallet.balance)}</small></span><div class="aibtns wrap">${presets}
+      <input id="betamt" class="netinput small" type="number" min="100" step="100" placeholder="직접 입력" value="${[1000, 3000, 5000, 10000].includes(amt) ? '' : amt}"></div></div>
+      <div class="btnrow"><button class="btn primary" data-action="bet-place" ${betUi && betUi.target && !net.busyMoney ? '' : 'disabled'}>🎯 ${betUi && betUi.target ? esc(uidName(net, betUi.target)) + '에게 ' : ''}베팅</button></div>`;
+  }
+  const closeAt = e.betCloseAt ? `<small> · 마감 ${new Date(e.betCloseAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}</small>` : (e.startedAt ? '' : '<small> · 게임 시작 직후 마감</small>');
+  return `<div class="betpanel">
+    <div class="difflabel">🎯 우승자 베팅 <small>풀 ${fmtWon(pool)} · 수수료 ${feePct}%</small>${closeAt}</div>
+    <div class="bettargets">${rows}</div>
+    ${mineHtml}${form}
+    <p class="sheet-p"><small>우승자에게 건 사람들이 전체 풀(수수료 제외)을 베팅 비율대로 나눠 가져요. 우승자에게 아무도 걸지 않았으면 전액 환불.</small></p>
+  </div>`;
+}
+
+/** Settlement outcome (end screen + spectator panel). */
+export function settlementHTML(net, myUid = '') {
+  const e = net && net.escrow;
+  if (!e) return '';
+  if (e.status === 'cancelled') return '<p class="sheet-p warn">방이 취소돼 참가비·베팅이 모두 환불됐어요.</p>';
+  if (e.status === 'disputed') return '<p class="sheet-p warn">⚠ 참가자들이 보고한 결과가 서로 달라요. 운영자 확인 후 정산돼요.</p>';
+  if (e.status !== 'settled' || !e.settlement) {
+    return (e.status === 'started' && net.ctrl && net.ctrl.finished)
+      ? '<p class="sheet-p"><small>⏳ 정산 중… (참가자들의 결과 확인을 모으는 중)</small></p>' : '';
+  }
+  const st = e.settlement;
+  const win = (st.winners || []).map((u) => esc(uidName(net, u))).join(', ') || '-';
+  const prize = st.prizePot > 0 ? `<div>🏆 우승 ${win} · 상금 ${fmtWon(st.prizePot - st.prizeFee)}${(st.winners || []).length > 1 ? ' (공동 분배)' : ''}</div>` : '';
+  const bets = st.betPool > 0 ? `<div>🎯 베팅 풀 ${fmtWon(st.betPool)} · ${st.betRefund ? '우승자 베팅 없음 → 전액 환불' : `당첨 배당 ${fmtWon(st.betPool - st.betFee)}`}</div>` : '';
+  const me = myUid && st.payouts && st.payouts[myUid] ? `<div class="mine">💰 내 수령액 <b>${fmtWon(st.payouts[myUid])}</b> (지갑에 입금됨)</div>` : (myUid ? '<div class="mine">이번 판 수령액 없음</div>' : '');
+  return `<div class="settlebox">${prize}${bets}${me}</div>`;
+}
+
+/** Spectator's lower pane (replaces "my area"). */
+export function spectatorPanelHTML(net, ctrl, wallet, betUi) {
+  return `<div class="row1"><div class="who">👁 관전 중<span class="sc">${net.spectatorCount || 1}명</span></div></div>
+    <p class="sheet-p"><small>상대 카드를 눌러 자세히 볼 수 있어요. 말풍선·행동은 할 수 없어요.</small></p>
+    ${betPanelHTML(net, wallet, betUi)}`;
+}
+
+export function spectatorBarHTML(ctrl) {
+  if (ctrl.finished) return '<div class="hint">게임이 끝났어요.</div><div class="btnrow"><button class="btn ghost" data-action="net-leave">나가기</button></div>';
+  return `${aiToastHTML(ctrl) || `<div class="hint">${esc(ctrl.current.name)} 차례…</div>`}<div class="btnrow"><button class="btn ghost" data-action="net-leave">관전 끝내기</button></div>`;
+}
+
+// ---------- wallet screen ----------
+
+const fmtDate = (t) => { const d = new Date(t || 0); return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
+const LEDGER_LABEL = { deposit: '충전', withdraw: '출금', withdraw_refund: '출금 취소(환불)', entry: '참가비', entry_refund: '참가비 환불', bet: '베팅', bet_refund: '베팅 환불', prize: '상금', bet_win: '베팅 당첨', adjust: '운영자 조정' };
+const STATUS_LABEL = { pending: '대기', approved: '승인', rejected: '거절', paid: '지급 완료' };
+
+export function walletHTML(w) {
+  if (!w.available) {
+    return `<div class="overlay"><div class="panel">
+      <div class="title big">💰 지갑</div>
+      <p class="sheet-p">지갑 기능을 쓰려면 Firebase 설정(Auth·Functions)이 필요해요.<br><small>docs/wallet-setup.md 참고</small></p>
+      <div class="btnrow"><button class="btn primary" data-action="wallet-close">닫기</button></div></div></div>`;
+  }
+  if (!w.user) {
+    return `<div class="overlay"><div class="panel">
+      <div class="title big">💰 지갑</div>
+      <p class="sheet-p">참가비가 있는 대전과 관전 베팅에 쓰는 지갑이에요.<br>로그인하면 어느 기기에서나 같은 잔액을 써요.</p>
+      ${w.notice ? `<p class="sheet-p warn">${esc(w.notice)}</p>` : ''}
+      <div class="btnrow"><button class="btn primary" data-action="wallet-login">Google 계정으로 로그인</button>
+      <button class="btn ghost" data-action="wallet-close">닫기</button></div></div></div>`;
+  }
+  const tab = w.tab || 'main';
+  const tabs = [['main', '잔액'], ['charge', '충전'], ['withdraw', '출금'], ['history', '내역']];
+  if (w.admin) tabs.push(['admin', '운영']);
+  const tabHtml = `<div class="aibtns statstabs wrap">${tabs.map(([k, l]) => `<button class="aibtn ${tab === k ? 'sel' : ''}" data-action="wallet-tab" data-tab="${k}">${l}</button>`).join('')}</div>`;
+  let body = '';
+  const cfg = w.config || {};
+  if (tab === 'main') {
+    body = `<div class="balance"><small>${esc(w.user.name || w.user.email)}</small><b>${fmtWon(w.balance)}</b></div>
+      <p class="sheet-p">충전은 계좌이체 후 [충전] 탭에서 요청하면 운영자 확인 뒤 반영돼요.<br>남은 잔액은 [출금] 탭에서 돌려받을 수 있어요.</p>
+      <div class="btnrow"><button class="btn alt" data-action="wallet-tab" data-tab="charge">충전 요청</button>
+      <button class="btn ghost" data-action="wallet-logout">로그아웃</button></div>`;
+  } else if (tab === 'charge') {
+    const pend = (w.requests?.deposits || []).slice(0, 5).map((d) => `<tr><td>${fmtDate(d.at)}</td><td>${fmtWon(d.amount)}</td><td>${esc(d.depositor || '')}</td><td>${STATUS_LABEL[d.status] || d.status}</td></tr>`).join('');
+    body = `<div class="bankbox"><small>입금 계좌</small><b>${cfg.bank ? esc(cfg.bank) : '(운영자가 계좌를 아직 등록하지 않았어요)'}</b></div>
+      <p class="sheet-p">① 위 계좌로 이체 → ② 아래에 금액과 입금자명을 적어 요청 → ③ 운영자 확인 후 잔액 반영<br><small>최소 ${fmtWon(cfg.minDeposit || 1000)}</small></p>
+      <input id="depamt" class="netinput" type="number" min="${cfg.minDeposit || 1000}" step="1000" placeholder="입금 금액 (원)">
+      <input id="depname" class="netinput" maxlength="30" placeholder="입금자명 (통장에 찍힌 이름)">
+      <div class="btnrow"><button class="btn primary" data-action="wallet-deposit" ${w.busy ? 'disabled' : ''}>충전 요청 보내기</button></div>
+      ${pend ? `<div class="difflabel">최근 충전 요청</div><table class="rank small">${pend}</table>` : ''}`;
+  } else if (tab === 'withdraw') {
+    const pend = (w.requests?.withdrawals || []).slice(0, 5).map((d) => `<tr><td>${fmtDate(d.at)}</td><td>${fmtWon(d.amount)}</td><td>${esc(d.bank || '')}</td><td>${STATUS_LABEL[d.status] || d.status}</td></tr>`).join('');
+    body = `<p class="sheet-p">잔액을 계좌로 돌려받아요. 요청 즉시 잔액에서 차감되고, 운영자가 이체한 뒤 '지급 완료'로 바뀌어요.</p>
+      <input id="wdamt" class="netinput" type="number" min="1000" step="1000" max="${w.balance}" placeholder="출금 금액 (최대 ${fmtWon(w.balance)})">
+      <input id="wdbank" class="netinput" maxlength="60" placeholder="은행 · 계좌번호 · 예금주">
+      <div class="btnrow"><button class="btn primary" data-action="wallet-withdraw" ${w.busy ? 'disabled' : ''}>출금 요청</button></div>
+      ${pend ? `<div class="difflabel">최근 출금 요청</div><table class="rank small">${pend}</table>` : ''}`;
+  } else if (tab === 'history') {
+    const rows = (w.ledger || []).map((l) => `<tr class="${l.amount > 0 ? 'plus' : 'minus'}"><td>${fmtDate(l.at)}</td><td>${LEDGER_LABEL[l.type] || l.type}${l.ref ? ` <small>${esc(l.ref)}</small>` : ''}</td><td>${l.amount > 0 ? '+' : ''}${fmtWon(l.amount)}</td><td>${fmtWon(l.balanceAfter)}</td></tr>`).join('');
+    body = rows ? `<table class="rank small"><tr><th>시각</th><th>내용</th><th>금액</th><th>잔액</th></tr>${rows}</table>` : '<p class="sheet-p">아직 내역이 없어요.</p>';
+  } else if (tab === 'admin') {
+    body = adminHTML(w);
+  }
+  return `<div class="overlay"><div class="panel netpanel">
+    <div class="title">💰 지갑 <small>${esc(w.user.email || '')}</small></div>
+    ${w.notice ? `<p class="sheet-p warn">${esc(w.notice)}</p>` : ''}
+    ${tabHtml}
+    ${body}
+    <div class="btnrow"><button class="btn primary" data-action="wallet-close">닫기</button></div>
+  </div></div>`;
+}
+
+/** Operator view: pending deposits/withdrawals, unsettled rooms, fee income, config. */
+export function adminHTML(w) {
+  const a = w.adminData || {};
+  const cfg = w.config || {};
+  const deps = (a.deposits || []).map((d) => `<div class="admrow"><div><b>${fmtWon(d.amount)}</b> · ${esc(d.depositor || '?')}<br><small>${esc(d.name || '')} ${esc(d.email || '')} · ${fmtDate(d.at)}</small></div>
+    <div class="aibtns"><button class="aibtn ok" data-action="adm-dep" data-id="${esc(d.id)}" data-ok="1" ${w.busy ? 'disabled' : ''}>승인</button><button class="aibtn no" data-action="adm-dep" data-id="${esc(d.id)}" data-ok="0" ${w.busy ? 'disabled' : ''}>거절</button></div></div>`).join('') || '<p class="sheet-p"><small>대기 중인 충전 요청 없음</small></p>';
+  const wds = (a.withdrawals || []).map((d) => `<div class="admrow"><div><b>${fmtWon(d.amount)}</b> · ${esc(d.bank || '?')}<br><small>${esc(d.name || '')} ${esc(d.email || '')} · ${fmtDate(d.at)}</small></div>
+    <div class="aibtns"><button class="aibtn ok" data-action="adm-wd" data-id="${esc(d.id)}" data-ok="1" ${w.busy ? 'disabled' : ''}>이체 완료</button><button class="aibtn no" data-action="adm-wd" data-id="${esc(d.id)}" data-ok="0" ${w.busy ? 'disabled' : ''}>거절(환불)</button></div></div>`).join('') || '<p class="sheet-p"><small>대기 중인 출금 요청 없음</small></p>';
+  const rooms = (a.rooms || []).map((r) => {
+    const n = Object.keys(r.players || {}).length;
+    const pool = Object.values(r.bets || {}).reduce((s, b) => s + (Number(b.amount) || 0), 0);
+    const votes = Object.keys(r.results || {}).length;
+    return `<div class="admrow"><div><b>${esc(r.code)}</b> · ${r.status}${r.status === 'disputed' ? ' ⚠' : ''}<br><small>참가비 ${fmtWon(r.entryFee)}×${n} · 베팅 ${fmtWon(pool)} · 결과보고 ${votes} · ${fmtDate(r.createdAt)}</small></div>
+      <div class="aibtns"><button class="aibtn no" data-action="adm-room" data-code="${esc(r.code)}" data-mode="refund" ${w.busy ? 'disabled' : ''}>전액 환불</button>${votes ? `<button class="aibtn ok" data-action="adm-room" data-code="${esc(r.code)}" data-mode="host" ${w.busy ? 'disabled' : ''}>방장 결과로 정산</button>` : ''}</div></div>`;
+  }).join('') || '<p class="sheet-p"><small>미정산 방 없음</small></p>';
+  return `<div class="feebox">누적 운영 수수료 <b>${fmtWon(a.feeTotal || 0)}</b><small>참가비·베팅 풀의 ${Math.round((cfg.feeRate || 0.1) * 100)}%가 정산 때 자동 적립돼요. 이 돈은 이미 운영자 계좌에 들어와 있는 충전금 중 유저에게 돌려줄 의무가 없는 몫이에요.</small></div>
+    <div class="difflabel">충전 요청 (${(a.deposits || []).length})</div>${deps}
+    <div class="difflabel">출금 요청 (${(a.withdrawals || []).length})</div>${wds}
+    <div class="difflabel">미정산 방 (${(a.rooms || []).length})</div>${rooms}
+    <div class="difflabel">설정</div>
+    <input id="cfgbank" class="netinput" maxlength="80" placeholder="입금 계좌 (은행 계좌번호 예금주)" value="${esc(cfg.bank || '')}">
+    <div class="airow"><span>수수료율 (%)</span><input id="cfgfee" class="netinput small" type="number" min="0" max="50" step="1" value="${Math.round((cfg.feeRate || 0.1) * 100)}"></div>
+    <div class="btnrow"><button class="btn alt" data-action="adm-config" ${w.busy ? 'disabled' : ''}>설정 저장</button></div>`;
 }
