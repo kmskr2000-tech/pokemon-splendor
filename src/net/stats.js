@@ -125,9 +125,9 @@ export function duelPairs(matches, myPid = '') {
 export const EVENT = {
   title: '최다승 이벤트',
   start: Date.UTC(2026, 10, 23, 5, 35, 0), // snapshot, 2026-11-23 14:35 KST (emote gate only)
-  end: Date.UTC(2026, 11, 26, 0, 0, 0), // 2026-12-26 09:00 KST
+  end: Date.UTC(2026, 10, 26, 0, 0, 0), // 2026-11-26 09:00 KST
   startLabel: '11/23 전적 스냅샷',
-  endLabel: '12/26(토) 오전 9시',
+  endLabel: '11/26(목) 오전 9시',
   // Friend stats snapshot: wins, games (= wins + draws + losses).
   baseline: [
     { name: '임실장', wins: 231, games: 502 },
