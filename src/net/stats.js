@@ -118,30 +118,59 @@ export function duelPairs(matches, myPid = '') {
 
 // ---------- multiplayer event (most wins inside a time window) ----------
 
-// Event window [start, end). Wins count only from matches recorded at or after
-// `start` (the stats snapshot) and before `end`. Times are absolute (UTC ms).
+// Event: wins added after the stats snapshot (baseline below, taken 11/23)
+// until `end` (UTC ms). Matches recorded at or after `end` don't count.
+// Baseline rows are matched to players by any name they have used, so a
+// rename after the snapshot still keeps the baseline.
 export const EVENT = {
   title: '최다승 이벤트',
-  start: Date.UTC(2026, 10, 23, 6, 55, 0), // 2026-11-23 15:55 KST (stats snapshot)
+  start: Date.UTC(2026, 10, 23, 5, 35, 0), // snapshot, 2026-11-23 14:35 KST (emote gate only)
   end: Date.UTC(2026, 11, 26, 0, 0, 0), // 2026-12-26 09:00 KST
-  startLabel: '11/23(월) 오후 3시 55분',
+  startLabel: '11/23 전적 스냅샷',
   endLabel: '12/26(토) 오전 9시',
+  // Friend stats snapshot: wins, games (= wins + draws + losses).
+  baseline: [
+    { name: '임실장', wins: 231, games: 502 },
+    { name: '드럼통 살인마', wins: 190, games: 356 },
+    { name: '강재워니', wins: 124, games: 238 },
+    { name: '사무관최고참', wins: 116, games: 277 },
+    { name: '엠팡의 입', wins: 1, games: 13 },
+  ],
 };
 
 /** Is the event running at `now`? */
 export const isEventActive = (now = Date.now(), ev = EVENT) => now >= ev.start && now < ev.end;
 
 /**
- * Event standings: friend stats over matches inside the event window, ranked by
- * wins (ties share a rank). Only players with at least one game are listed.
- * -> [{ ...aggregateStats row, rank }]
+ * Event standings: wins added since the snapshot (current wins minus baseline),
+ * ranked by added wins (ties share a rank). Only players with at least one game
+ * after the snapshot are listed. -> [{ ...aggregateStats row, wins, games, rank }]
  */
 export function eventStandings(matches, ev = EVENT) {
   const inWin = {};
+  const names = new Map(); // pid -> every name used
   for (const [k, m] of Object.entries(matches || {})) {
-    if (m && Number.isFinite(m.at) && m.at >= ev.start && m.at < ev.end) inWin[k] = m;
+    if (!m || !Number.isFinite(m.at) || m.at >= ev.end) continue;
+    inWin[k] = m;
+    for (const p of Array.isArray(m.players) ? m.players : []) {
+      if (!p || !cleanPid(p.pid)) continue;
+      if (!names.has(p.pid)) names.set(p.pid, new Set());
+      names.get(p.pid).add(p.name);
+    }
   }
-  const rows = aggregateStats(inWin).filter((r) => r.games > 0);
+  const all = aggregateStats(inWin);
+  // Each baseline row goes to one player: same current name first, else the
+  // player with the most wins among those who ever used that name.
+  const base = new Map(); // pid -> baseline
+  for (const b of ev.baseline || []) {
+    const cands = all.filter((r) => !base.has(r.pid) && (r.name === b.name || names.get(r.pid)?.has(b.name)));
+    cands.sort((x, y) => (y.name === b.name) - (x.name === b.name) || y.wins - x.wins);
+    if (cands[0]) base.set(cands[0].pid, b);
+  }
+  const rows = all.map((r) => {
+    const b = base.get(r.pid) || { wins: 0, games: 0 };
+    return { ...r, wins: Math.max(0, r.wins - b.wins), games: Math.max(0, r.games - b.games) };
+  }).filter((r) => r.games > 0);
   rows.sort((a, b) => b.wins - a.wins || a.games - b.games || b.lastAt - a.lastAt);
   rows.forEach((r) => { r.rank = 1 + rows.filter((o) => o.wins > r.wins).length; });
   return rows;
