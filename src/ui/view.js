@@ -7,6 +7,8 @@ import { BALLS, TRAINERS, evoText } from './controller.js';
 import { dexSummary } from '../storage/store.js';
 import { ACHIEVEMENTS } from '../data/achievements.js';
 import { CHALLENGES, challengeProgress } from '../data/challenges.js';
+import { EVENT, formatRemain } from '../net/stats.js';
+import { TONGUE_MAX } from '../net/session.js';
 
 const diffLabel = { easy: '쉬움', normal: '보통', hard: '어려움' };
 
@@ -635,13 +637,43 @@ export function challengeEndHTML(won, challenge) {
 
 // ---------- multiplayer rejoin ----------
 
-// Friend stats (multiplayer). st: { loading, error, rows, duel, tab: 'all'|'duel', myPid }
+// Event banner: time left (live via .evcount) and the current leader(s).
+export function eventBannerHTML(rows, now = Date.now()) {
+  const over = now >= EVENT.end;
+  const tops = (rows || []).filter((r) => r.rank === 1 && r.wins > 0);
+  const lead = rows == null ? '불러오는 중…'
+    : tops.length ? `${tops.map((r) => esc(r.name)).join(', ')} <b>${tops[0].wins}승</b>`
+      : '아직 없음';
+  return `<div class="evbanner" data-action="net-stats" data-tab="event">
+    <div class="evtitle">🎉 ${EVENT.title}${over ? ' 종료' : ''}</div>
+    <div class="evline">${over ? '최종 우승' : '현재 1위'} 👑 ${lead}</div>
+    <div class="evline">${over ? '이벤트가 끝났어요' : `⏳ 종료까지 <span class="evcount">${formatRemain(EVENT.end - now)}</span>`}</div>
+  </div>`;
+}
+
+function eventTabHTML(st) {
+  const now = Date.now();
+  const over = now >= EVENT.end;
+  const head = `<div class="evinfo">
+    <p class="sheet-p">⏳ 종료까지 <b class="evcount">${formatRemain(EVENT.end - now)}</b><br>
+    <small>${EVENT.startLabel} 이후 ~ ${EVENT.endLabel}까지 <b>추가된 승수</b>가 가장 많은 사람이 우승!<br>
+    현재 1위는 게임 중 <b>😝 메롱</b>을 한 판에 ${TONGUE_MAX}번까지 쓸 수 있어요.</small></p></div>`;
+  const ev = st.event || [];
+  if (!ev.length) return `${head}<p class="sheet-p">아직 이벤트 기간에 끝난 대전이 없어요.</p>`;
+  const crown = (r) => (r.rank === 1 && r.wins > 0 ? (over ? '🏆' : '👑') : r.rank);
+  const rows = ev.map((r) => `<tr class="${r.pid === st.myPid ? 'me' : ''}${r.rank === 1 && r.wins > 0 ? ' win' : ''}"><td>${crown(r)}</td><td>${esc(r.name)}${r.pid === st.myPid ? ' (나)' : ''}</td><td>${r.wins}</td><td>${r.games}</td></tr>`).join('');
+  return `${head}<table class="rank"><tr><th></th><th>이름</th><th>추가 승</th><th>판</th></tr>${rows}</table>
+    <p class="sheet-p"><small>🔴 실시간 반영. 단독 1등만 승리로 쳐요. 승수가 같으면 공동 순위.</small></p>`;
+}
+
+// Friend stats (multiplayer). st: { loading, error, rows, duel, event, tab: 'event'|'all'|'duel', myPid }
 export function friendStatsHTML(st) {
-  const tab = st.tab === 'duel' ? 'duel' : 'all';
+  const tab = ['duel', 'event'].includes(st.tab) ? st.tab : 'all';
   const fmt = (t) => { const d = new Date(t); return `${d.getMonth() + 1}/${d.getDate()}`; };
   let body;
   if (st.loading) body = '<p class="sheet-p">불러오는 중…</p>';
   else if (st.error) body = '<p class="sheet-p">전적을 불러오지 못했어요. 잠시 후 다시 시도해주세요.</p>';
+  else if (tab === 'event') body = eventTabHTML(st);
   else if (tab === 'all') {
     if (!st.rows.length) body = '<p class="sheet-p">아직 기록된 대전이 없어요.<br><small>친구와 멀티 게임을 끝까지 하면 쌓여요.</small></p>';
     else {
@@ -660,8 +692,9 @@ export function friendStatsHTML(st) {
     }
   }
   return `<div class="overlay"><div class="panel">
-    <div class="title big">🏆 ${tab === 'duel' ? '듀얼 전적' : '친구 전적'}</div>
-    <div class="aibtns statstabs"><button class="aibtn ${tab === 'all' ? 'sel' : ''}" data-action="net-stats-tab" data-tab="all">친구 전적</button>
+    <div class="title big">🏆 ${tab === 'duel' ? '듀얼 전적' : tab === 'event' ? '이벤트 순위' : '친구 전적'}</div>
+    <div class="aibtns statstabs"><button class="aibtn ${tab === 'event' ? 'sel' : ''}" data-action="net-stats-tab" data-tab="event">🎉 이벤트</button>
+    <button class="aibtn ${tab === 'all' ? 'sel' : ''}" data-action="net-stats-tab" data-tab="all">친구 전적</button>
     <button class="aibtn ${tab === 'duel' ? 'sel' : ''}" data-action="net-stats-tab" data-tab="duel">⚔ 듀얼 전적</button></div>
     ${body}
     <div class="btnrow"><button class="btn ghost" data-action="net-stats-refresh">🔄 새로고침</button>
@@ -708,7 +741,8 @@ export function netHTML(net, notice = '') {
             <div class="roomtitle">${esc(r.title)}</div>
             <div class="roommeta">👑 ${esc(r.hostName)} · ${r.playerCount}/4명 · ⏱ ${Math.round((r.turnLimitMs || 45000) / 1000)}초</div>
           </div>`).join('');
-      body = `<p class="sheet-p">친구와 대전해요. 방을 골라 입장하세요. (2~4인)</p>
+      body = `${eventBannerHTML(net.eventRows)}
+        <p class="sheet-p">친구와 대전해요. 방을 골라 입장하세요. (2~4인)</p>
         <div class="roomlist">${roomHtml}</div>
         ${(() => { const rj = typeof net.peekRejoin === 'function' ? net.peekRejoin() : null;
           return rj ? `<div class="btnrow"><button class="btn alt" data-action="net-rejoin" data-code="${esc(rj.code)}">📲 최근 방 이어하기 <small>${esc(rj.code)}</small></button></div>` : ''; })()}

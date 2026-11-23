@@ -4,13 +4,16 @@
 import { CARDS } from '../data/cards.js';
 import { createController } from '../ui/controller.js';
 import { NetRoom } from './webrtc.js';
-import { FirebaseRoom, writeMatch } from './fireroom.js';
-import { buildResults, cleanPid } from './stats.js';
+import { FirebaseRoom, writeMatch, loadMatches } from './fireroom.js';
+import { buildResults, cleanPid, eventStandings, eventLeaders, isEventActive } from './stats.js';
 import { MSG, makeMsg, stateHash } from './protocol.js';
 
 const MAX_PLAYERS = 4;
 export const EMOTES = ['😂', '🖕', '⏰', '중국인'];
 const EMOTE_COOLDOWN_MS = 2500;
+// Event emote: only the current event leader may send it, TONGUE_MAX times per game.
+export const TONGUE = '메롱';
+export const TONGUE_MAX = 3;
 // Host waits this long past the shown deadline before forcing a timeout, so an
 // action sent at the last second (Firebase relay ~1-2s) still counts.
 const TIMEOUT_GRACE_MS = 2500;
@@ -24,6 +27,8 @@ export class NetSession {
     this.usePeer = opts.usePeer !== false;
     this.myPid = cleanPid(opts.pid);
     this.writeMatch = opts.writeMatch || writeMatch; // injectable for tests
+    this.loadMatches = opts.loadMatches || loadMatches; // injectable for tests
+    this.now = opts.now || (() => Date.now());
     this.reset();
   }
 
@@ -53,6 +58,8 @@ export class NetSession {
     this.pids = []; // seat -> per-device player id (friend stats)
     this._matchSaved = false;
     this._emoteAt = {}; // seat -> last emote timestamp (cooldown)
+    this._tongueUsed = {}; // seat -> event emotes shown this game
+    this.eventLeaders = new Set(); // pids leading the event (loaded at game start)
     this.actionCount = 0; // host: applied actions (authoritative snapshot sequence)
     this._commitChain = Promise.resolve(); // host: ordered snapshot->broadcast chain
   }
@@ -353,7 +360,8 @@ export class NetSession {
   guestMsg(m) {
     switch (m.t) {
       case MSG.EMOTE:
-        if (this.phase === 'playing' && Number.isInteger(m.from) && EMOTES.includes(m.k) && m.from !== this.myIndex) {
+        // Event emote is validated (leader + per-game limit) by the host before relay.
+        if (this.phase === 'playing' && Number.isInteger(m.from) && (EMOTES.includes(m.k) || m.k === TONGUE) && m.from !== this.myIndex) {
           this._showEmote(m.from, m.k);
         }
         break;
@@ -431,16 +439,39 @@ export class NetSession {
 
   _emoteOk(seat, k) {
     if (this.phase !== 'playing' || !this.ctrl) return false;
-    if (!Number.isInteger(seat) || !EMOTES.includes(k)) return false;
+    if (!Number.isInteger(seat) || !(EMOTES.includes(k) || k === TONGUE)) return false;
     const pl = this.ctrl.game.players[seat];
     if (!pl || pl.isAI || this.aiTakeover[seat]) return false;
+    if (k === TONGUE && this.tongueLeft(seat) <= 0) return false;
     const now = Date.now();
     if (now - (this._emoteAt[seat] || 0) < EMOTE_COOLDOWN_MS) return false;
     this._emoteAt[seat] = now;
     return true;
   }
 
+  /** Event emotes this seat may still send this game (0 = not the leader / used up / event over). */
+  tongueLeft(seat = this.myIndex) {
+    if (!isEventActive(this.now())) return 0;
+    const pid = seat === this.myIndex && this.myPid ? this.myPid : cleanPid(this.pids[seat]);
+    if (!pid || !this.eventLeaders.has(pid)) return 0;
+    return Math.max(0, TONGUE_MAX - (this._tongueUsed[seat] || 0));
+  }
+
+  /** Load event standings and remember the current leaders (every client, at game start). */
+  refreshEventLeaders() {
+    if (!this.usePeer || !isEventActive(this.now())) return Promise.resolve();
+    return Promise.resolve()
+      .then(() => this.loadMatches())
+      .then((m) => {
+        this.eventLeaders = eventLeaders(eventStandings(m));
+        this.cb.onRender();
+      })
+      .catch(() => {});
+  }
+
   _showEmote(seat, k) {
+    // Every client counts shown event emotes, so a promoted host keeps the tally.
+    if (k === TONGUE) this._tongueUsed[seat] = (this._tongueUsed[seat] || 0) + 1;
     if (this.cb.onEmote) this.cb.onEmote({ from: seat, name: this.names[seat] || '', k });
   }
 
@@ -496,8 +527,10 @@ export class NetSession {
     this.myIndex = myIndex;
     this.phase = 'playing';
     this._matchSaved = false;
+    this._tongueUsed = {};
     this.actionCount = 0;
     this._commitChain = Promise.resolve();
+    this.refreshEventLeaders();
     this.resetTurnTimer();
     this.startTurnTimer();
     this.cb.onGameStart(ctrl);

@@ -524,3 +524,29 @@ button.orsv:hover { border-color: #4ade80; }
 .emote-bubble { background: #1a1a2e; border: 2px solid #fbbf24; color: #fef3c7; border-radius: 12px; padding: 6px 10px; font-size: 14px; animation: emotein .15s ease-out; }
 .emote-bubble b { font-size: 22px; margin-left: 6px; vertical-align: middle; }
 @keyframes emotein { from { transform: translateY(-6px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* ---------- event (multiplayer) ---------- */
+.evbanner { background: linear-gradient(135deg, #5b21b6, #be185d); border: 3px solid var(--ink); box-shadow: 4px 4px 0 var(--ink); padding: 10px 12px; margin-bottom: 10px; color: #fff; cursor: pointer; text-align: center; }
+.evbanner:active { transform: translate(4px, 4px); box-shadow: none; }
+.evtitle { font-size: 14px; font-weight: bold; color: #fde68a; margin-bottom: 4px; }
+.evline { font-size: 12px; line-height: 1.7; }
+.evline b { color: #fde68a; }
+.evcount { font-variant-numeric: tabular-nums; color: #fde68a; }
+.evinfo .sheet-p { margin-top: 0; }
+#emotebar button.tonguebtn { position: relative; background: #be185d; border-color: #fde68a; }
+#emotebar button.tonguebtn i { position: absolute; right: -6px; top: -6px; min-width: 18px; height: 18px; line-height: 18px; border-radius: 9px; background: #fde68a; color: #1a1a2e; font-size: 11px; font-style: normal; font-weight: bold; }
+#tongueshow { position: fixed; inset: 0; z-index: 230; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+#tongueshow[hidden] { display: none; }
+.tongue-box { width: min(78vw, 78vh, 440px); text-align: center; animation: tonguepop 2.6s ease-out forwards; filter: drop-shadow(6px 6px 0 rgba(0,0,0,.55)); }
+.tongue-box svg { width: 100%; height: auto; display: block; }
+.tongue-box .tongue { transform-origin: 104px 128px; animation: tonguewag .35s ease-in-out infinite alternate; }
+.tongue-txt { font-size: min(16vw, 72px); font-weight: 900; color: #fde68a; -webkit-text-stroke: 3px #1a1a2e; paint-order: stroke fill; line-height: 1.1; margin-top: -6px; }
+.tongue-who { display: inline-block; margin-top: 4px; font-size: 16px; color: #fff; background: #1a1a2e; border: 2px solid #fde68a; border-radius: 12px; padding: 4px 12px; }
+@keyframes tonguepop {
+  0% { transform: scale(.2) rotate(-20deg); opacity: 0; }
+  12% { transform: scale(1.12) rotate(6deg); opacity: 1; }
+  20% { transform: scale(.96) rotate(-4deg); }
+  28%, 82% { transform: scale(1) rotate(0); opacity: 1; }
+  100% { transform: scale(1.08); opacity: 0; }
+}
+@keyframes tonguewag { from { transform: rotate(-9deg); } to { transform: rotate(9deg); } }

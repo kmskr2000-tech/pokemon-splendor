@@ -115,3 +115,51 @@ export function duelPairs(matches, myPid = '') {
   const mine = (r) => (myPid && r.a.pid === myPid ? 1 : 0);
   return [...pairs.values()].sort((x, y) => mine(y) - mine(x) || y.games - x.games || y.lastAt - x.lastAt);
 }
+
+// ---------- multiplayer event (most wins inside a time window) ----------
+
+// Event window [start, end). Wins count only from matches recorded at or after
+// `start` (the stats snapshot) and before `end`. Times are absolute (UTC ms).
+export const EVENT = {
+  title: '최다승 이벤트',
+  start: Date.UTC(2026, 10, 23, 6, 55, 0), // 2026-11-23 15:55 KST (stats snapshot)
+  end: Date.UTC(2026, 11, 26, 0, 0, 0), // 2026-12-26 09:00 KST
+  startLabel: '11/23(월) 오후 3시 55분',
+  endLabel: '12/26(토) 오전 9시',
+};
+
+/** Is the event running at `now`? */
+export const isEventActive = (now = Date.now(), ev = EVENT) => now >= ev.start && now < ev.end;
+
+/**
+ * Event standings: friend stats over matches inside the event window, ranked by
+ * wins (ties share a rank). Only players with at least one game are listed.
+ * -> [{ ...aggregateStats row, rank }]
+ */
+export function eventStandings(matches, ev = EVENT) {
+  const inWin = {};
+  for (const [k, m] of Object.entries(matches || {})) {
+    if (m && Number.isFinite(m.at) && m.at >= ev.start && m.at < ev.end) inWin[k] = m;
+  }
+  const rows = aggregateStats(inWin).filter((r) => r.games > 0);
+  rows.sort((a, b) => b.wins - a.wins || a.games - b.games || b.lastAt - a.lastAt);
+  rows.forEach((r) => { r.rank = 1 + rows.filter((o) => o.wins > r.wins).length; });
+  return rows;
+}
+
+/** Current event leaders (pids): rank 1 with at least one win. Ties all lead. */
+export function eventLeaders(rows) {
+  return new Set((rows || []).filter((r) => r.rank === 1 && r.wins > 0).map((r) => r.pid));
+}
+
+/** "12일 3시간 4분 5초" style remaining time (Korean), or '종료' when <= 0. */
+export function formatRemain(ms) {
+  if (!(ms > 0)) return '종료';
+  const s = Math.floor(ms / 1000);
+  const d = Math.floor(s / 86400);
+  const h = Math.floor((s % 86400) / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d ? `${d}일 ` : ''}${pad(h)}:${pad(m)}:${pad(sec)}`;
+}

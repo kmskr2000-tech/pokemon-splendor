@@ -77,6 +77,14 @@ export async function loadMatches() {
   return snap.val() || {};
 }
 
+/** Live match records: cb({ id: rec }) on every change. Returns unsubscribe. */
+export function watchMatches(cb, onError = () => {}) {
+  const ref = getDb().ref(MATCHES_PATH);
+  const handler = (snap) => cb(snap.val() || {});
+  ref.on('value', handler, onError);
+  return () => { try { ref.off('value', handler); } catch {} };
+}
+
 /** List available rooms for the lobby. Returns [{code, title, hostName, playerCount, created}]. */
 export async function listRooms() {
   const db = getDb();

@@ -52,9 +52,9 @@ import { ACHIEVEMENTS, checkAchievements } from '../data/achievements.js';
 import { CHALLENGES, challengeWon } from '../data/challenges.js';
 import { createController } from './controller.js';
 import * as V from './view.js';
-import { NetSession, EMOTES } from '../net/session.js';
-import { listRooms, watchRooms, loadMatches } from '../net/fireroom.js';
-import { aggregateStats, duelPairs } from '../net/stats.js';
+import { NetSession, EMOTES, TONGUE, TONGUE_MAX } from '../net/session.js';
+import { listRooms, watchRooms, loadMatches, watchMatches } from '../net/fireroom.js';
+import { aggregateStats, duelPairs, eventStandings, EVENT, formatRemain } from '../net/stats.js';
 import { getBonuses, getPoints, bonusList } from '../core/engine.js';
 import { startBGM, stopBGM, unlockAudio } from '../audio/bgm.js';
 import { sfx, setSFXEnabled } from '../audio/sfx.js';
@@ -374,12 +374,14 @@ function openNet() {
       startTimerUpdater();
       render();
     },
-    onGameEnd: () => { stopLobbyWatch(); stopTimerUpdater(); net = null; ctrl = null; render(); },
+    onGameEnd: () => { stopLobbyWatch(); stopStatsWatch(); friendStats = null; stopTimerUpdater(); net = null; ctrl = null; render(); },
     onNotice: (msg) => { netNotice = msg; render(); },
     onEmote: showEmote,
   }, { pid: getPlayerId(storage) });
   net.myName = options.playerName || ''; // pre-fill saved name
   net.roomList = [];
+  net.eventRows = null; // lobby event banner (current leader)
+  loadMatches().then((m) => { if (net) { net.eventRows = eventStandings(m); render(); } }).catch(() => {});
   refreshLobby();
   render();
 }
@@ -415,6 +417,7 @@ const EMOTE_SHOW_MS = 2500;
 const esc2 = (t) => String(t).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 function showEmote({ name, k }) {
+  if (k === TONGUE) { showTongue(name); return; }
   const box = document.getElementById('emotetoast');
   if (!box) return;
   const el = document.createElement('div');
@@ -425,27 +428,91 @@ function showEmote({ name, k }) {
   setTimeout(() => el.remove(), EMOTE_SHOW_MS);
 }
 
-function openFriendStats() {
-  const myPid = getPlayerId(storage);
-  const tab = friendStats?.tab || 'all';
-  friendStats = { loading: true, error: false, rows: [], duel: [], tab, myPid };
-  loadMatches()
-    .then((m) => { if (friendStats) friendStats = { loading: false, error: false, rows: aggregateStats(m), duel: duelPairs(m, myPid), tab: friendStats.tab, myPid }; })
-    .catch(() => { if (friendStats) friendStats = { loading: false, error: true, rows: [], duel: [], tab: friendStats.tab, myPid }; })
-    .finally(() => render());
+// Event emote: a big tongue-out face over the middle of every player's screen.
+// pointer-events: none, so it never blocks a move (the turn timer keeps running).
+const TONGUE_SHOW_MS = 2600;
+const TONGUE_SVG = `<svg viewBox="0 0 200 200" aria-hidden="true">
+  <circle cx="100" cy="100" r="92" fill="#facc15" stroke="#1a1a2e" stroke-width="8"/>
+  <path d="M50 68 L78 82 L50 96" fill="none" stroke="#1a1a2e" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+  <ellipse cx="134" cy="80" rx="11" ry="16" fill="#1a1a2e"/>
+  <ellipse cx="44" cy="120" rx="14" ry="8" fill="#fb7185" opacity=".65"/>
+  <ellipse cx="158" cy="120" rx="14" ry="8" fill="#fb7185" opacity=".65"/>
+  <path d="M58 122 Q100 142 142 122" fill="none" stroke="#1a1a2e" stroke-width="8" stroke-linecap="round"/>
+  <path class="tongue" d="M80 128 Q78 182 105 182 Q132 182 128 128 Z" fill="#f43f5e" stroke="#1a1a2e" stroke-width="7" stroke-linejoin="round"/>
+  <path d="M104 136 L104 162" stroke="#9f1239" stroke-width="5" stroke-linecap="round"/>
+</svg>`;
+let _tongueTimer = null;
+function showTongue(name) {
+  let el = document.getElementById('tongueshow');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'tongueshow';
+    document.body.appendChild(el);
+  }
+  el.innerHTML = `<div class="tongue-box">${TONGUE_SVG}<div class="tongue-txt">메롱~</div><div class="tongue-who">👑 ${esc2(name)}</div></div>`;
+  el.hidden = false;
+  try { sfx.lose(); } catch {}
+  clearTimeout(_tongueTimer);
+  _tongueTimer = setTimeout(() => { el.hidden = true; el.innerHTML = ''; }, TONGUE_SHOW_MS);
+  syncEmoteBar();
 }
 
-let emoteBarOn = false;
+// Friend stats overlay: live while open (event ranking updates in real time).
+let _statsUnwatch = null;
+function stopStatsWatch() {
+  if (_statsUnwatch) { try { _statsUnwatch(); } catch {} _statsUnwatch = null; }
+}
+function openFriendStats() {
+  const myPid = getPlayerId(storage);
+  const tab = friendStats?.tab || 'event';
+  friendStats = { loading: true, error: false, rows: [], duel: [], event: [], tab, myPid };
+  const apply = (m) => {
+    if (!friendStats) return;
+    if (net && m) net.eventRows = eventStandings(m);
+    friendStats = m
+      ? { loading: false, error: false, rows: aggregateStats(m), duel: duelPairs(m, myPid), event: net?.eventRows || eventStandings(m), tab: friendStats.tab, myPid }
+      : { loading: false, error: true, rows: [], duel: [], event: [], tab: friendStats.tab, myPid };
+    render();
+  };
+  stopStatsWatch();
+  try {
+    _statsUnwatch = watchMatches((m) => apply(m), () => apply(null));
+  } catch {
+    loadMatches().then(apply, () => apply(null));
+  }
+  render();
+}
+function closeFriendStats() {
+  stopStatsWatch();
+  friendStats = null;
+}
+
+// Event countdowns: any element with class "evcount" shows time left until the event ends.
+setInterval(() => {
+  const els = document.querySelectorAll('.evcount');
+  if (!els.length) return;
+  const txt = formatRemain(EVENT.end - Date.now());
+  els.forEach((e) => { if (e.textContent !== txt) e.textContent = txt; });
+}, 1000);
+
+let emoteBarOn = 'off';
 function syncEmoteBar() {
   const bar = document.getElementById('emotebar');
   if (!bar) return;
   const on = !!(net && ctrl && ctrl.mp && !ctrl.finished && net.phase === 'playing');
-  if (on === emoteBarOn) return;
-  emoteBarOn = on;
+  // Event leader gets an extra 메롱 button with its per-game uses left.
+  const left = on && typeof net.tongueLeft === 'function' && net.eventLeaders && net.eventLeaders.size ? net.tongueLeft() : 0;
+  const lead = on && net.eventLeaders && net.eventLeaders.has(net.myPid);
+  const key = on ? `on:${lead ? left : '-'}` : 'off';
+  if (key === emoteBarOn) return;
+  emoteBarOn = key;
   bar.hidden = !on;
   // Text emotes (e.g. '중국인') get a wider, smaller-font button than emoji ones.
   const isText = (k) => /^[\p{L}\p{N}]+$/u.test(k);
-  bar.innerHTML = on ? EMOTES.map((k) => `<button class="${isText(k) ? 'txt' : ''}" data-action="emote" data-k="${k}" aria-label="이모티콘 ${k}">${k}</button>`).join('') : '';
+  const tongueBtn = lead
+    ? `<button class="tonguebtn" data-action="emote" data-k="${TONGUE}" ${left ? '' : 'disabled'} aria-label="이벤트 1위 전용 메롱 (${left}/${TONGUE_MAX})">😝<i>${left}</i></button>`
+    : '';
+  bar.innerHTML = on ? tongueBtn + EMOTES.map((k) => `<button class="${isText(k) ? 'txt' : ''}" data-action="emote" data-k="${k}" aria-label="이모티콘 ${k}">${k}</button>`).join('') : '';
 }
 
 let _timerUpdater = null;
@@ -488,7 +555,7 @@ document.addEventListener('click', (e) => {
   if (options.bgm && !ctrl) startBGM('calm');
   const d = el.dataset;
   switch (d.action) {
-    case 'emote': if (net) net.sendEmote(d.k); return;
+    case 'emote': if (net) { net.sendEmote(d.k); syncEmoteBar(); } return;
     case 'start': startGame(d.name); return;
     case 'resume': resumeGame(); return;
     case 'dex': dexOpen = true; dexDetail = null; break;
@@ -576,8 +643,8 @@ document.addEventListener('click', (e) => {
     } break;
     case 'net-help': netHelpOpen = true; break;
     case 'net-stats': case 'net-stats-refresh': openFriendStats(); break;
-    case 'net-stats-close': friendStats = null; break;
-    case 'net-stats-tab': if (friendStats) friendStats.tab = d.tab === 'duel' ? 'duel' : 'all'; break;
+    case 'net-stats-close': closeFriendStats(); break;
+    case 'net-stats-tab': if (friendStats) friendStats.tab = ['duel', 'event'].includes(d.tab) ? d.tab : 'all'; break;
     case 'net-help-close': netHelpOpen = false; break;
     case 'net-timelimit': if (net) {
       const ms = Number(d.ms);
@@ -633,7 +700,7 @@ document.addEventListener('click', (e) => {
       if (t) { t.select(); try { navigator.clipboard.writeText(t.value); netNotice = '복사됐어요.'; } catch { netNotice = '복사가 안 되면 직접 드래그해서 복사해주세요.'; } }
       break;
     }
-    case 'net-leave': if (net) { netHelpOpen = false; friendStats = null; net.end(); return; } break;
+    case 'net-leave': if (net) { netHelpOpen = false; closeFriendStats(); net.end(); return; } break;
     case 'tut-next': tutAdvance(); return;
     case 'tut-done': tutorial = null; break;
     case 'tut-skip': tutorial = null; break;
