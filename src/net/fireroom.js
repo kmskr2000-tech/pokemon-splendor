@@ -172,9 +172,15 @@ export const HOST_FRESH_MS = 90000;
 // host-promotion and rejoin races; husks with no timestamps go immediately).
 export const ROOM_SWEEP_MS = 30 * 60 * 1000;
 
+// The server sets hostGone = hostId the moment the host's connection drops
+// (tab closed, reload). Such a room is hidden right away instead of lingering
+// until its heartbeat goes stale; a guest who takes over clears the flag.
+const isHostGone = (r) => !!(r && r.hostGone && r.hostId && r.hostGone === r.hostId);
+
 /** Pure: is this room shown in the lobby? (exported for tests) */
 export function isRoomJoinable(r, now = Date.now()) {
   if (!r || r.started) return false;
+  if (isHostGone(r)) return false;
   const hb = r.hostHb || 0;
   if (hb && now - hb < HOST_FRESH_MS) return true;
   // Old clients without heartbeat: show only brand-new rooms.
@@ -186,6 +192,7 @@ export function isRoomJoinable(r, now = Date.now()) {
 /** Pure: is this a running game spectators can watch? (exported for tests) */
 export function isRoomWatchable(r, now = Date.now()) {
   if (!r || !r.started || !r.startInfo || !Array.isArray(r.startInfo.names)) return false;
+  if (isHostGone(r)) return false;
   const hb = r.hostHb || 0;
   const sn = r.snapshot || {};
   return !!hb && now - hb < HOST_FRESH_MS && !(sn.fin || (sn.state && sn.state.phase === 'finished'));

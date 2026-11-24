@@ -13,6 +13,9 @@ async function checkVersion() {
     const param = new URLSearchParams(location.search).get('v');
     if (v && v !== mine && param !== String(v)) {
       if (typeof net !== 'undefined' && net && net.phase === 'playing' && ctrl && !ctrl.finished) return;
+      // Never reload out of a room (host lobby, guest lobby): the reload would
+      // orphan the room and the host would end up creating a second one.
+      if (typeof net !== 'undefined' && net && net.room && net.phase !== 'menu') return;
       location.replace(location.pathname + '?v=' + v);
     }
   } catch { /* offline or first deploy: stay put */ }
