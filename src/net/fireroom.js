@@ -16,7 +16,7 @@
 //       toHost/{pushId}: { from: guestId, data: msgString }
 //       toGuest/{guestId}/{pushId}: { data: msgString }
 
-import { parseMsg } from './protocol.js';
+import { parseMsg, decodeSnapshot } from './protocol.js';
 
 const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // no confusing 0/O/1/I
 const ROOMS_PATH = 'pkmspl-rooms';
@@ -98,7 +98,7 @@ export async function readLiveRoom(code) {
   ]);
   const startInfo = info.val();
   if (!startInfo || !Array.isArray(startInfo.names)) return null;
-  return { startInfo, snapshot: snap.val() || null };
+  return { startInfo, snapshot: decodeSnapshot(snap.val()) };
 }
 
 /**
@@ -120,7 +120,7 @@ export function watchLiveRoom(code, { onSnap = () => {}, onGone = () => {}, onEm
   const snapRef = db.ref(`${ROOMS_PATH}/${code}/snapshot`);
   const infoRef = db.ref(`${ROOMS_PATH}/${code}/startInfo`);
   const meRef = db.ref(`${ROOMS_PATH}/${code}/spectators/${genId()}`);
-  const snapCb = (s) => { const v = s.val(); if (v && v.state) onSnap(v); };
+  const snapCb = (s) => { const v = decodeSnapshot(s.val()); if (v) onSnap(v); };
   let gone = false;
   const infoCb = (s) => { if (!s.val() && !gone) { gone = true; onGone(); } };
   snapRef.on('value', snapCb);
@@ -187,7 +187,8 @@ export function isRoomJoinable(r, now = Date.now()) {
 export function isRoomWatchable(r, now = Date.now()) {
   if (!r || !r.started || !r.startInfo || !Array.isArray(r.startInfo.names)) return false;
   const hb = r.hostHb || 0;
-  return !!hb && now - hb < HOST_FRESH_MS && !(r.snapshot && r.snapshot.state && r.snapshot.state.phase === 'finished');
+  const sn = r.snapshot || {};
+  return !!hb && now - hb < HOST_FRESH_MS && !(sn.fin || (sn.state && sn.state.phase === 'finished'));
 }
 
 /** Pure: is this room dead and safe to delete? (exported for tests) */
@@ -709,7 +710,11 @@ export class FirebaseRoom {
   async writeSnapshot(state, h, n, last = null) {
     if (!this.isHost || !this.code || !this._db) return;
     // `last` = { from, action }: lets spectators replay the move (animations).
-    const payload = { state, h: h || null, n: n || 0, at: Date.now(), last: last || null };
+    // JSON strings: RTDB would strip empty arrays/nulls from the raw objects.
+    const payload = {
+      sj: JSON.stringify(state), h: h || null, n: n || 0, at: Date.now(),
+      lj: last ? JSON.stringify(last) : null, fin: state && state.phase === 'finished',
+    };
     const ref = this._db.ref(`${ROOMS_PATH}/${this.code}/snapshot`);
     try {
       await ref.set(payload);
@@ -731,7 +736,7 @@ export class FirebaseRoom {
     if (this.isHost || !this.code || !this._db) return null;
     try {
       const snap = await this._db.ref(`${ROOMS_PATH}/${this.code}/snapshot`).once('value');
-      return snap.exists() ? snap.val() : null;
+      return snap.exists() ? decodeSnapshot(snap.val()) : null;
     } catch {
       return null;
     }

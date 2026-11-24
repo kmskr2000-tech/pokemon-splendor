@@ -86,3 +86,43 @@ export function stateHash(state) {
   }
   return (h >>> 0).toString(16).padStart(8, '0');
 }
+
+// ---------- Firebase-safe game state ----------
+// RTDB drops empty arrays/objects and nulls, and turns arrays with null holes
+// into objects. Snapshots are therefore stored as a JSON string; reviveState
+// repairs a state that went through RTDB as a plain object (older hosts).
+
+const TABLE_SLOT_COUNT = { 1: 4, 2: 4, 3: 4, rare: 1, legend: 1 };
+const asArr = (v, len = 0) => {
+  let a = Array.isArray(v) ? v.slice() : (v && typeof v === 'object' ? Object.keys(v).reduce((o, k) => { o[Number(k)] = v[k]; return o; }, []) : []);
+  if (len) { a.length = Math.max(len, a.length); a = Array.from(a, (x) => x ?? null); }
+  return a;
+};
+
+export function reviveState(s) {
+  if (!s || typeof s !== 'object') return null;
+  const st = { ...s };
+  st.players = asArr(st.players).map((p) => ({ ...p, tokens: { ...(p && p.tokens) }, hand: asArr(p && p.hand), tableau: asArr(p && p.tableau), evolved: asArr(p && p.evolved) }));
+  st.table = Object.fromEntries(Object.keys(TABLE_SLOT_COUNT).map((k) => [k, asArr((st.table || {})[k], TABLE_SLOT_COUNT[k])]));
+  st.decks = Object.fromEntries(Object.keys(TABLE_SLOT_COUNT).map((k) => [k, asArr((st.decks || {})[k])]));
+  st.supply = { ...(st.supply || {}) };
+  if (st.endTriggeredBy === undefined) st.endTriggeredBy = null;
+  if (st.ranking === undefined) st.ranking = null;
+  else if (st.ranking) st.ranking = asArr(st.ranking);
+  if (st.stalled === undefined) st.stalled = false;
+  if (st.passStreak === undefined) st.passStreak = 0;
+  return st;
+}
+
+/** Decode a stored snapshot node -> { state, h, n, at, last } (or null). */
+export function decodeSnapshot(v) {
+  if (!v) return null;
+  let state = null;
+  let last = null;
+  try { if (typeof v.sj === 'string') state = JSON.parse(v.sj); } catch {}
+  if (!state && v.state) state = reviveState(v.state);
+  try { if (typeof v.lj === 'string') last = JSON.parse(v.lj); } catch {}
+  if (!last && v.last) last = v.last;
+  if (!state) return null;
+  return { state, h: v.h || null, n: Number(v.n) || 0, at: Number(v.at) || 0, last };
+}
