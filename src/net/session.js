@@ -1,12 +1,12 @@
 // Multiplayer session: owns the NetRoom, the lockstep protocol flow, and the
 // multiplayer controller. main.js only renders `session` state and forwards taps.
 
-import { CARDS } from '../data/cards.js';
-import { createController } from '../ui/controller.js';
-import { NetRoom } from './webrtc.js';
-import { FirebaseRoom, writeMatch, loadMatches, readLiveRoom, watchLiveRoom, watchSpectators } from './fireroom.js';
-import { buildResults, cleanPid, eventStandings, eventLeaders, isEventActive } from './stats.js';
-import { MSG, makeMsg, stateHash } from './protocol.js';
+import { CARDS } from '../data/cards.js?v=1795522268';
+import { createController } from '../ui/controller.js?v=1795522268';
+import { NetRoom } from './webrtc.js?v=1795522268';
+import { FirebaseRoom, writeMatch, loadMatches, readLiveRoom, watchLiveRoom, watchSpectators } from './fireroom.js?v=1795522268';
+import { buildResults, cleanPid, eventStandings, eventLeaders, isEventActive } from './stats.js?v=1795522268';
+import { MSG, makeMsg, stateHash } from './protocol.js?v=1795522268';
 
 const MAX_PLAYERS = 4;
 export const EMOTES = ['😂', '🖕', '⏰', '중국인'];
@@ -581,7 +581,13 @@ export class NetSession {
     this.phase = 'busy';
     this.cb.onRender();
     let live = null;
-    try { live = await readLiveRoom(clean); } catch { /* handled below */ }
+    try {
+      // Never hang on "connecting": give up after a few seconds.
+      live = await Promise.race([
+        readLiveRoom(clean),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 8000)),
+      ]);
+    } catch { /* handled below */ }
     if (this.role !== 'spectator') return; // left meanwhile
     if (!live) {
       this.role = null;
@@ -629,10 +635,19 @@ export class NetSession {
     this.myIndex = -1;
     this.seed = si.seed >>> 0;
     this.phase = 'playing';
-    this.cb.onGameStart(ctrl);
+    try {
+      this.cb.onGameStart(ctrl);
+    } catch {
+      // A board that cannot be drawn must not leave the screen stuck.
+      this.cb.onNotice('관전 화면을 여는 데 실패했어요. 새로고침 후 다시 시도해주세요.');
+      this.end();
+      return;
+    }
     try {
       this._liveUnwatch = watchLiveRoom(clean, {
-        onSnap: (snap) => { adopt(snap); this.cb.onRender(); },
+        onSnap: (snap) => {
+          try { adopt(snap); this.cb.onRender(); } catch { this.cb.onNotice('관전 중 오류가 나서 종료했어요.'); this.end(); }
+        },
         onEmote: (e) => {
           if (!Number.isInteger(e.from) || !(EMOTES.includes(e.k) || e.k === TONGUE)) return;
           this._showEmote(e.from, e.k);
