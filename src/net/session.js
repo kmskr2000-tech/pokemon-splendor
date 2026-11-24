@@ -278,6 +278,7 @@ export class NetSession {
         const seat = this.peerToPlayer[peerIdx];
         if (!this._emoteOk(seat, m.k)) return;
         this.room.broadcast(makeMsg(MSG.EMOTE, { from: seat, k: m.k }), peerIdx);
+        if (typeof this.room.writeEmote === 'function') this.room.writeEmote(seat, m.k);
         this._showEmote(seat, m.k);
         break;
       }
@@ -291,7 +292,7 @@ export class NetSession {
           this.room.sendTo(peerIdx, makeMsg(MSG.SYNC, { state: this.ctrl.game }));
           break;
         }
-        const res = this.ctrl.applyRemote(m.action);
+        const res = this._applyAnimated(m.action);
         if (res.ok) {
           this.hostCommit(m.action, seat, peerIdx);
         } else {
@@ -422,7 +423,7 @@ export class NetSession {
           this.room.send(makeMsg(MSG.SYNC_REQ, {}));
           break;
         }
-        const res = this.ctrl.applyRemote(m.action);
+        const res = this._applyAnimated(m.action);
         this.cb.onRender();
         if (res.ok && stateHash(this.ctrl.game) !== m.h) {
           this.room.send(makeMsg(MSG.SYNC_REQ, {}));
@@ -438,6 +439,14 @@ export class NetSession {
         }
         break;
     }
+  }
+
+  /** Apply another seat's action with the UI's fly animation around it. */
+  _applyAnimated(action, apply = (a) => this.ctrl.applyRemote(a)) {
+    const token = this.cb.beforeRemote ? this.cb.beforeRemote() : null;
+    const res = apply(action);
+    if (res.ok && this.cb.afterRemote) this.cb.afterRemote(token);
+    return res;
   }
 
   // ---------- emoticons (stateless: no ACTION, no hash, no log/save) ----------
@@ -483,7 +492,10 @@ export class NetSession {
   /** Local player sends an emoticon. Returns true when sent. */
   sendEmote(k) {
     if (!this._emoteOk(this.myIndex, k)) return false;
-    if (this.role === 'host') this.room.broadcast(makeMsg(MSG.EMOTE, { from: this.myIndex, k }));
+    if (this.role === 'host') {
+      this.room.broadcast(makeMsg(MSG.EMOTE, { from: this.myIndex, k }));
+      if (typeof this.room.writeEmote === 'function') this.room.writeEmote(this.myIndex, k);
+    }
     else this.room.send(makeMsg(MSG.EMOTE, { k }));
     this._showEmote(this.myIndex, k);
     return true;
@@ -583,13 +595,29 @@ export class NetSession {
     const ctrl = createController({ cards: CARDS, seed: si.seed >>> 0, mp: { names: si.names, me: 0, aiNames: si.aiNames || [] }, hooks: {}, difficulty: 'hard' });
     ctrl.spectator = true;
     Object.defineProperty(ctrl, 'isHumanTurn', { get: () => false });
+    const raw = ctrl.dispatch.bind(ctrl);
     ctrl.dispatch = () => ({ ok: false, error: '관전 중에는 둘 수 없어요.' });
     ctrl.stepAI = () => {};
     ctrl.mp.spectator = true;
     ctrl.mp.getTurnRemaining = () => this.getTurnRemaining();
+    let seq = -1; // action count of the state on screen
     const adopt = (snap) => {
       if (!snap || !snap.state) return;
-      ctrl.game = snap.state;
+      const n = Number(snap.n) || 0;
+      // Next move in order: replay it (log, toast, fly animation), then make sure
+      // we match the host exactly. Gaps or mismatches just take the snapshot.
+      let replayed = false;
+      if (seq >= 0 && n === seq + 1 && snap.last && snap.last.action && ctrl.game.current === snap.last.from) {
+        const res = this._applyAnimated(snap.last.action, raw);
+        replayed = res.ok && (!snap.h || stateHash(ctrl.game) === snap.h);
+      }
+      seq = n;
+      if (replayed) {
+        // Keep seat flags (AI takeover) from the host.
+        ctrl.game.players.forEach((p, i) => { if (snap.state.players[i]) p.isAI = snap.state.players[i].isAI; });
+      } else {
+        ctrl.game = snap.state;
+      }
       this._snapAt = Number(snap.at) || Date.now();
       this.turnDeadline = this._snapAt + this.turnLimitMs;
     };
@@ -605,6 +633,10 @@ export class NetSession {
     try {
       this._liveUnwatch = watchLiveRoom(clean, {
         onSnap: (snap) => { adopt(snap); this.cb.onRender(); },
+        onEmote: (e) => {
+          if (!Number.isInteger(e.from) || !(EMOTES.includes(e.k) || e.k === TONGUE)) return;
+          this._showEmote(e.from, e.k);
+        },
         onGone: () => {
           if (this.ctrl && this.ctrl.finished) return; // keep the final board up
           this.cb.onNotice('📡 게임이 끝나 관전을 종료해요.');
@@ -693,7 +725,7 @@ export class NetSession {
     this.actionCount += 1;
     const h = stateHash(this.ctrl.game);
     if (this.room && typeof this.room.writeSnapshot === 'function') {
-      await this.room.writeSnapshot(this.ctrl.game, h, this.actionCount);
+      await this.room.writeSnapshot(this.ctrl.game, h, this.actionCount, { from: fromIdx, action });
     }
     this.room.broadcast(makeMsg(MSG.ACTION, { from: fromIdx, action, h }), except);
     this.cb.onRender();

@@ -203,7 +203,7 @@ function snapshotMovables() {
   const snap = new Map();
   document.querySelectorAll('[data-action="card"]').forEach((el) =>
     snap.set('card:' + el.dataset.card, { el, rect: el.getBoundingClientRect() }));
-  document.querySelectorAll('#supply [data-action="ball"]').forEach((el) =>
+  document.querySelectorAll('#supply [data-color]').forEach((el) =>
     snap.set('ball:' + el.dataset.color, { el, rect: el.getBoundingClientRect() }));
   return snap;
 }
@@ -244,7 +244,8 @@ function flyBalls(snap, colors, dstEl) {
 function animateAIFromSnap(snap) {
   const ev = ctrl.lastAIEvent;
   if (!ev) return;
-  const dst = document.querySelector(`.opp[data-id="${ev.player}"]`);
+  // Spectators see seat `human` in the bottom panel.
+  const dst = ev.player === ctrl.human ? document.getElementById('me') : document.querySelector(`.opp[data-id="${ev.player}"]`);
   if (!dst) return;
   if (ev.type === 'buy' || ev.type === 'reserve') {
     flyClone(snap.get('card:' + ev.cardId), dst);
@@ -377,6 +378,13 @@ function openNet() {
     onGameEnd: () => { stopLobbyWatch(); stopStatsWatch(); friendStats = null; stopTimerUpdater(); net = null; ctrl = null; render(); },
     onNotice: (msg) => { netNotice = msg; render(); },
     onEmote: showEmote,
+    // Other seats' moves (and spectator replays) fly like AI moves.
+    beforeRemote: () => (ctrl ? { snap: snapshotMovables(), ev: ctrl.lastAIEvent } : null),
+    afterRemote: (t) => {
+      if (!t || !ctrl) return;
+      render();
+      if (ctrl.lastAIEvent && ctrl.lastAIEvent !== t.ev) animateAIFromSnap(t.snap);
+    },
   }, { pid: getPlayerId(storage) });
   net.myName = options.playerName || ''; // pre-fill saved name
   net.roomList = [];

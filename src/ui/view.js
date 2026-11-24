@@ -148,7 +148,7 @@ export function supplyHTML(ctrl) {
     const n = sel(k);
     const empty = s.supply[k] === 0;
     const pickable = canPick && k !== MASTER;
-    return `<button class="ball ${n ? 'sel' : ''} ${empty ? 'empty' : ''}" ${pickable ? `data-action="ball" data-color="${k}"` : 'disabled'}>
+    return `<button class="ball ${n ? 'sel' : ''} ${empty ? 'empty' : ''}" data-color="${k}" ${pickable ? 'data-action="ball"' : 'disabled'}>
       <span class="ballwrap">${ballImg(k, 'ballspr')}${n ? `<span class="selcount">×${n}</span>` : ''}</span>
       <span class="bnm">${BALLS[k].name}</span><span class="cnt">${s.supply[k]}개</span></button>`;
   }).join('');

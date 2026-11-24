@@ -106,8 +106,17 @@ export async function readLiveRoom(code) {
  * action, onGone() once the room is deleted. Registers presence under
  * spectators/{id} (removed on disconnect). Returns unsubscribe.
  */
-export function watchLiveRoom(code, { onSnap = () => {}, onGone = () => {} } = {}) {
+export function watchLiveRoom(code, { onSnap = () => {}, onGone = () => {}, onEmote = () => {} } = {}) {
   const db = getDb();
+  const emoteRef = db.ref(`${ROOMS_PATH}/${code}/emote`);
+  let lastEmote = '';
+  const emoteCb = (s) => {
+    const v = s.val();
+    if (!v || !v.id || v.id === lastEmote) return;
+    lastEmote = v.id;
+    if (Date.now() - (Number(v.at) || 0) < 8000) onEmote(v); // skip stale ones on subscribe
+  };
+  emoteRef.on('value', emoteCb);
   const snapRef = db.ref(`${ROOMS_PATH}/${code}/snapshot`);
   const infoRef = db.ref(`${ROOMS_PATH}/${code}/startInfo`);
   const meRef = db.ref(`${ROOMS_PATH}/${code}/spectators/${genId()}`);
@@ -120,6 +129,7 @@ export function watchLiveRoom(code, { onSnap = () => {}, onGone = () => {} } = {
   return () => {
     try { snapRef.off('value', snapCb); } catch {}
     try { infoRef.off('value', infoCb); } catch {}
+    try { emoteRef.off('value', emoteCb); } catch {}
     meRef.remove().catch(() => {});
     try { meRef.onDisconnect().cancel(); } catch {}
   };
@@ -696,9 +706,10 @@ export class FirebaseRoom {
    * is always a superset of what any guest has seen. A successor host adopts
    * this snapshot when its own lockstep mirror diverged.
    */
-  async writeSnapshot(state, h, n) {
+  async writeSnapshot(state, h, n, last = null) {
     if (!this.isHost || !this.code || !this._db) return;
-    const payload = { state, h: h || null, n: n || 0, at: Date.now() };
+    // `last` = { from, action }: lets spectators replay the move (animations).
+    const payload = { state, h: h || null, n: n || 0, at: Date.now(), last: last || null };
     const ref = this._db.ref(`${ROOMS_PATH}/${this.code}/snapshot`);
     try {
       await ref.set(payload);
@@ -706,6 +717,13 @@ export class FirebaseRoom {
       // One retry: a blip here must not silently break the superset invariant.
       try { await ref.set(payload); } catch {}
     }
+  }
+
+  /** Host: publish an emote for spectators (they are not in the message relay). */
+  writeEmote(from, k) {
+    if (!this.isHost || !this.code || !this._db) return;
+    const id = genId(6);
+    this._db.ref(`${ROOMS_PATH}/${this.code}/emote`).set({ from, k, id, at: Date.now() }).catch(() => {});
   }
 
   /** Guest (promoting): read the last authoritative snapshot, if any. */

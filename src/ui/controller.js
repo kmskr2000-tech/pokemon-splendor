@@ -239,7 +239,7 @@ export function createController({ cards, seed, humanName = 'ë‚˜', aiNames = ['ì
       for (const ev of res.events) {
         const line = describeEvent(ev, this);
         if (line) this.log.push(line);
-        if (ev.player !== this.human && ['takeBalls', 'takeTwo', 'buy', 'reserve', 'evolve'].includes(ev.type)) {
+        if ((ev.player !== this.human || this.spectator) && ['takeBalls', 'takeTwo', 'buy', 'reserve', 'evolve'].includes(ev.type)) {
           this.lastAIEvent = ev;
         }
       }
