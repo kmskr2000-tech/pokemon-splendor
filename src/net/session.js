@@ -1,12 +1,12 @@
 // Multiplayer session: owns the NetRoom, the lockstep protocol flow, and the
 // multiplayer controller. main.js only renders `session` state and forwards taps.
 
-import { CARDS } from '../data/cards.js?v=1795522670';
-import { createController } from '../ui/controller.js?v=1795522670';
-import { NetRoom } from './webrtc.js?v=1795522670';
-import { FirebaseRoom, writeMatch, loadMatches, readLiveRoom, watchLiveRoom, watchSpectators, watchChat, sendChat } from './fireroom.js?v=1795522670';
-import { buildResults, cleanPid, eventStandings, eventLeaders, isEventActive } from './stats.js?v=1795522670';
-import { MSG, makeMsg, stateHash } from './protocol.js?v=1795522670';
+import { CARDS } from '../data/cards.js?v=1795522906';
+import { createController } from '../ui/controller.js?v=1795522906';
+import { NetRoom } from './webrtc.js?v=1795522906';
+import { FirebaseRoom, writeMatch, loadMatches, readLiveRoom, watchLiveRoom, watchSpectators, watchChat, sendChat } from './fireroom.js?v=1795522906';
+import { buildResults, cleanPid, eventStandings, eventLeaders, isEventActive } from './stats.js?v=1795522906';
+import { MSG, makeMsg, stateHash } from './protocol.js?v=1795522906';
 
 const MAX_PLAYERS = 4;
 export const EMOTES = ['😂', '🖕', '⏰', '중국인'];
