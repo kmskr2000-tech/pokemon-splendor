@@ -550,3 +550,8 @@ button.orsv:hover { border-color: #4ade80; }
   100% { transform: scale(1.08); opacity: 0; }
 }
 @keyframes tonguewag { from { transform: rotate(-9deg); } to { transform: rotate(9deg); } }
+
+/* ---------- spectating ---------- */
+.roomitem.live { background: #1f2e2a; border-color: #14532d; }
+.roomitem.live .roommeta b { color: #86efac; }
+.livetag { color: #f87171; font-size: 12px; animation: blink 1.4s infinite; }

@@ -88,10 +88,12 @@ export function headerHTML(ctrl) {
   const s = ctrl.state;
   let badge;
   if (ctrl.finished) badge = '게임 종료';
+  else if (ctrl.spectator) badge = `👀 관전 · ${ctrl.current.name} 차례`;
   else if (ctrl.isHumanTurn) badge = '▶ 당신의 차례';
   else badge = `${ctrl.current.name} 차례`;
   const last = ctrl.lastRound ? `<div class="lastround">마지막 라운드! ${s.players[s.endTriggeredBy].name}이(가) 21점 달성</div>` : '';
-  const netbadge = ctrl.mp ? `<div class="netbadge">📡 대전 ${ctrl.mp.names.length}인</div>` : '';
+  const watchers = ctrl.mp && ctrl.mp.spectators ? ` · 👀 ${ctrl.mp.spectators}` : '';
+  const netbadge = ctrl.mp ? `<div class="netbadge">📡 ${ctrl.spectator ? '관전 중' : `대전 ${ctrl.mp.names.length}인`}${watchers}</div>` : '';
   // Turn timer for multiplayer (90s limit).
   let timerHtml = '';
   if (ctrl.mp && typeof ctrl.mp.getTurnRemaining === 'function' && !ctrl.finished) {
@@ -563,9 +565,9 @@ export function endHTML(ctrl) {
   const s = ctrl.state;
   const rows = s.ranking.map((r) => {
     const p = s.players[r.player];
-    return `<tr class="${r.rank === 1 ? 'win' : ''} ${p.id === ctrl.human ? 'me' : ''}"><td>${r.rank}</td><td>${p.isAI ? 'AI ' : ''}${p.name}</td><td>${r.points}점</td><td>진화 ${r.evolutions}</td><td>${r.pokemon}마리</td></tr>`;
+    return `<tr class="${r.rank === 1 ? 'win' : ''} ${p.id === ctrl.human && !ctrl.spectator ? 'me' : ''}"><td>${r.rank}</td><td>${p.isAI ? 'AI ' : ''}${p.name}</td><td>${r.points}점</td><td>진화 ${r.evolutions}</td><td>${r.pokemon}마리</td></tr>`;
   }).join('');
-  const top = s.ranking[0].player === ctrl.human;
+  const top = !ctrl.spectator && s.ranking[0].player === ctrl.human;
   const scoreLine = ctrl.lastScore != null
     ? `<p class="scoreline">승리 점수 <b>${ctrl.lastScore}</b>${ctrl.lastBest ? ' <span class="newbest">NEW!</span>' : ''}</p>`
     : '';
@@ -575,7 +577,7 @@ export function endHTML(ctrl) {
     ${scoreLine}
     <p class="sheet-p">동점은 진화 횟수가 많은 쪽 → 앞면 포켓몬 수가 적은 쪽이 이겨요.</p>
     <div class="btnrow"><button class="btn alt" data-action="dex">도감</button>
-    <button class="btn primary" data-action="restart">다시 하기</button></div>
+    <button class="btn primary" data-action="restart">${ctrl.spectator ? '관전 끝내기' : '다시 하기'}</button></div>
   </div></div>`;
 }
 
@@ -717,7 +719,8 @@ export function netHelpHTML() {
       • 실수로 나가도 10분 안에 같은 코드로 들어오면 이어서 할 수 있어요.<br>
       • 방장이 나가면 남은 사람 중 한 명이 방장을 이어받아 게임이 계속돼요. 나간 방장도 메뉴의 '최근 방 이어하기'로 자기 자리로 돌아올 수 있어요.<br>
       • 인원이 부족하면 남는 자리를 AI로 채울 수 있어요 (방장 로비에서 선택).<br>
-      • 각자 자기 차례에만 둘 수 있어요.</p>
+      • 각자 자기 차례에만 둘 수 있어요.<br>
+      • 진행 중인 게임은 목록에 <b>● 게임 중</b>으로 떠요. 탭하면 인원 제한 없이 관전할 수 있어요 (관전자는 둘 수 없고, 방장 화면 기준 실시간).</p>
     </div>
     <div class="btnrow"><button class="btn primary" data-action="net-help-close">닫기</button></div>
   </div></div>`;
@@ -736,11 +739,15 @@ export function netHTML(net, notice = '') {
       const rooms = net.roomList || [];
       const roomHtml = rooms.length === 0
         ? '<p class="sheet-p">열린 방이 없어요. 방을 만들어보세요!</p>'
-        : rooms.map((r) => `
+        : rooms.map((r) => (r.started ? `
+          <div class="roomitem live" data-action="net-spectate" data-code="${esc(r.code)}">
+            <div class="roomtitle"><span class="livetag">● 게임 중</span> ${esc(r.title)}</div>
+            <div class="roommeta">👑 ${esc(r.hostName)} · ${r.playerCount}명 · 👀 ${r.spectators || 0}명 관전 · <b>탭해서 관전</b></div>
+          </div>` : `
           <div class="roomitem" data-action="net-lobby-join" data-code="${esc(r.code)}">
             <div class="roomtitle">${esc(r.title)}</div>
             <div class="roommeta">👑 ${esc(r.hostName)} · ${r.playerCount}/4명 · ⏱ ${Math.round((r.turnLimitMs || 45000) / 1000)}초</div>
-          </div>`).join('');
+          </div>`)).join('');
       body = `${eventBannerHTML(net.eventRows)}
         <p class="sheet-p">친구와 대전해요. 방을 골라 입장하세요. (2~4인)</p>
         <div class="roomlist">${roomHtml}</div>

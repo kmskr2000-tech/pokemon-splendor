@@ -116,7 +116,7 @@ function render() {
   if (ctrl && ctrl.finished && !lastFinished) {
     lastFinished = true;
     const won = ctrl.state.ranking && ctrl.state.ranking[0]?.player === ctrl.human;
-    if (won) sfx.win(); else sfx.lose();
+    if (ctrl.spectator || won) sfx.win(); else sfx.lose();
   } else if (!ctrl || !ctrl.finished) {
     lastFinished = false;
   }
@@ -499,7 +499,7 @@ let emoteBarOn = 'off';
 function syncEmoteBar() {
   const bar = document.getElementById('emotebar');
   if (!bar) return;
-  const on = !!(net && ctrl && ctrl.mp && !ctrl.finished && net.phase === 'playing');
+  const on = !!(net && ctrl && ctrl.mp && !ctrl.spectator && !ctrl.finished && net.phase === 'playing');
   // Event leader gets an extra 메롱 button with its per-game uses left.
   const left = on && typeof net.tongueLeft === 'function' && net.eventLeaders && net.eventLeaders.size ? net.tongueLeft() : 0;
   const lead = on && net.eventLeaders && net.eventLeaders.has(net.myPid);
@@ -617,6 +617,7 @@ document.addEventListener('click', (e) => {
     case 'net': openNet(); break;
     case 'net-menu': if (net) { net.phase = 'menu'; netNotice = ''; refreshLobby(); } break;
     case 'net-lobby-refresh': if (net) { refreshLobby(); } break;
+    case 'net-spectate': if (net && d.code) { netNotice = ''; net.spectate(d.code); return; } break;
     case 'net-lobby-join': if (net) {
       const code = d.code;
       if (!code) break;

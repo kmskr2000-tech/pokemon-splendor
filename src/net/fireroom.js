@@ -85,6 +85,54 @@ export function watchMatches(cb, onError = () => {}) {
   return () => { try { ref.off('value', handler); } catch {} };
 }
 
+// ---------- spectating (read-only; no room messages, unlimited viewers) ----------
+// Spectators only read the host's authoritative snapshot, so they add no load
+// to the host and never touch the lockstep protocol.
+
+/** Read a started room's start info and latest snapshot. Returns null if not running. */
+export async function readLiveRoom(code) {
+  const db = getDb();
+  const [info, snap] = await Promise.all([
+    db.ref(`${ROOMS_PATH}/${code}/startInfo`).once('value'),
+    db.ref(`${ROOMS_PATH}/${code}/snapshot`).once('value'),
+  ]);
+  const startInfo = info.val();
+  if (!startInfo || !Array.isArray(startInfo.names)) return null;
+  return { startInfo, snapshot: snap.val() || null };
+}
+
+/**
+ * Watch a running room as a spectator: onSnap(snapshot) on every committed
+ * action, onGone() once the room is deleted. Registers presence under
+ * spectators/{id} (removed on disconnect). Returns unsubscribe.
+ */
+export function watchLiveRoom(code, { onSnap = () => {}, onGone = () => {} } = {}) {
+  const db = getDb();
+  const snapRef = db.ref(`${ROOMS_PATH}/${code}/snapshot`);
+  const infoRef = db.ref(`${ROOMS_PATH}/${code}/startInfo`);
+  const meRef = db.ref(`${ROOMS_PATH}/${code}/spectators/${genId()}`);
+  const snapCb = (s) => { const v = s.val(); if (v && v.state) onSnap(v); };
+  let gone = false;
+  const infoCb = (s) => { if (!s.val() && !gone) { gone = true; onGone(); } };
+  snapRef.on('value', snapCb);
+  infoRef.on('value', infoCb);
+  meRef.set({ at: Date.now() }).then(() => { try { meRef.onDisconnect().remove(); } catch {} }).catch(() => {});
+  return () => {
+    try { snapRef.off('value', snapCb); } catch {}
+    try { infoRef.off('value', infoCb); } catch {}
+    meRef.remove().catch(() => {});
+    try { meRef.onDisconnect().cancel(); } catch {}
+  };
+}
+
+/** Live spectator count of a room: cb(n). Returns unsubscribe. */
+export function watchSpectators(code, cb) {
+  const ref = getDb().ref(`${ROOMS_PATH}/${code}/spectators`);
+  const handler = (s) => cb(s.exists() ? s.numChildren() : 0);
+  ref.on('value', handler);
+  return () => { try { ref.off('value', handler); } catch {} };
+}
+
 /** List available rooms for the lobby. Returns [{code, title, hostName, playerCount, created}]. */
 export async function listRooms() {
   const db = getDb();
@@ -125,6 +173,13 @@ export function isRoomJoinable(r, now = Date.now()) {
   return false;
 }
 
+/** Pure: is this a running game spectators can watch? (exported for tests) */
+export function isRoomWatchable(r, now = Date.now()) {
+  if (!r || !r.started || !r.startInfo || !Array.isArray(r.startInfo.names)) return false;
+  const hb = r.hostHb || 0;
+  return !!hb && now - hb < HOST_FRESH_MS && !(r.snapshot && r.snapshot.state && r.snapshot.state.phase === 'finished');
+}
+
 /** Pure: is this room dead and safe to delete? (exported for tests) */
 export function isRoomDead(r, now = Date.now()) {
   if (!r) return true;
@@ -153,8 +208,22 @@ function classifyRooms(snap) {
         dead.push(code);
         return;
       }
-      if (!isRoomJoinable(r, now)) return;
       const guests = r.guests ? Object.keys(r.guests).length : 0;
+      if (isRoomWatchable(r, now)) {
+        const si = r.startInfo || {};
+        rooms.push({
+          code,
+          started: true,
+          title: r.title || '제목 없음',
+          hostName: r.hostName || '?',
+          playerCount: (si.names || []).length + (si.aiNames || []).length,
+          spectators: r.spectators ? Object.keys(r.spectators).length : 0,
+          created: r.created || 0,
+          turnLimitMs: r.turnLimitMs || 45000,
+        });
+        return;
+      }
+      if (!isRoomJoinable(r, now)) return;
       rooms.push({
         code,
         title: r.title || '제목 없음',
@@ -165,7 +234,8 @@ function classifyRooms(snap) {
       });
     });
     // Newest first.
-    rooms.sort((a, b) => b.created - a.created);
+    // Joinable rooms first, then running games; newest first within each.
+    rooms.sort((a, b) => (a.started ? 1 : 0) - (b.started ? 1 : 0) || b.created - a.created);
   }
   return { rooms, dead };
 }

@@ -4,7 +4,7 @@
 import { CARDS } from '../data/cards.js';
 import { createController } from '../ui/controller.js';
 import { NetRoom } from './webrtc.js';
-import { FirebaseRoom, writeMatch, loadMatches } from './fireroom.js';
+import { FirebaseRoom, writeMatch, loadMatches, readLiveRoom, watchLiveRoom, watchSpectators } from './fireroom.js';
 import { buildResults, cleanPid, eventStandings, eventLeaders, isEventActive } from './stats.js';
 import { MSG, makeMsg, stateHash } from './protocol.js';
 
@@ -62,6 +62,10 @@ export class NetSession {
     this.eventLeaders = new Set(); // pids leading the event (loaded at game start)
     this.actionCount = 0; // host: applied actions (authoritative snapshot sequence)
     this._commitChain = Promise.resolve(); // host: ordered snapshot->broadcast chain
+    this.spectators = 0; // live spectator count of this room
+    this._specUnwatch = null; // players: spectator-count watcher
+    this._liveUnwatch = null; // spectator: snapshot watcher
+    this._snapAt = 0; // spectator: time of the last committed action
   }
 
   // Rejoin persistence (guest): remember code+playerIndex so an accidental
@@ -349,6 +353,7 @@ export class NetSession {
 
   /** User pressed cancel during guest join. */
   cancelGuestJoin() {
+    if (this.role === 'spectator') { this.role = null; this.phase = 'menu'; this.cb.onRender(); return; }
     if (this.room && typeof this.room.cancelJoin === 'function') {
       this.room.cancelJoin();
     }
@@ -531,13 +536,91 @@ export class NetSession {
     this.actionCount = 0;
     this._commitChain = Promise.resolve();
     this.refreshEventLeaders();
+    this.watchSpectatorCount();
     this.resetTurnTimer();
     this.startTurnTimer();
     this.cb.onGameStart(ctrl);
   }
 
+  /** Players: keep a live count of spectators for the header. */
+  watchSpectatorCount() {
+    if (this._specUnwatch || !this.usePeer) return;
+    const code = (this.room && this.room.code) || this.shortCode || this.lastCode;
+    if (!code) return;
+    try {
+      this._specUnwatch = watchSpectators(code, (n) => {
+        this.spectators = n;
+        if (this.ctrl && this.ctrl.mp) this.ctrl.mp.spectators = n;
+        this.cb.onRender();
+      });
+    } catch { /* no DB (tests) */ }
+  }
+
+  // ---------- spectating (read-only) ----------
+
+  /**
+   * Watch a running game. Spectators never join the room: they mirror the host's
+   * authoritative snapshot, so any number can watch without slowing the game.
+   */
+  async spectate(code) {
+    const clean = String(code || '').trim().toUpperCase();
+    this.role = 'spectator';
+    this.lastCode = clean;
+    this.phase = 'busy';
+    this.cb.onRender();
+    let live = null;
+    try { live = await readLiveRoom(clean); } catch { /* handled below */ }
+    if (this.role !== 'spectator') return; // left meanwhile
+    if (!live) {
+      this.role = null;
+      this.phase = 'menu';
+      this.cb.onNotice('지금 진행 중인 게임이 아니에요. 목록을 새로고침해주세요.');
+      return;
+    }
+    const si = live.startInfo;
+    if (si.turnLimitMs) this.turnLimitMs = si.turnLimitMs;
+    // Seat 0 (the room creator) fills the bottom panel; everyone else is shown above.
+    const ctrl = createController({ cards: CARDS, seed: si.seed >>> 0, mp: { names: si.names, me: 0, aiNames: si.aiNames || [] }, hooks: {}, difficulty: 'hard' });
+    ctrl.spectator = true;
+    Object.defineProperty(ctrl, 'isHumanTurn', { get: () => false });
+    ctrl.dispatch = () => ({ ok: false, error: '관전 중에는 둘 수 없어요.' });
+    ctrl.stepAI = () => {};
+    ctrl.mp.spectator = true;
+    ctrl.mp.getTurnRemaining = () => this.getTurnRemaining();
+    const adopt = (snap) => {
+      if (!snap || !snap.state) return;
+      ctrl.game = snap.state;
+      this._snapAt = Number(snap.at) || Date.now();
+      this.turnDeadline = this._snapAt + this.turnLimitMs;
+    };
+    adopt(live.snapshot);
+    if (!live.snapshot) this.turnDeadline = Date.now() + this.turnLimitMs;
+    this.ctrl = ctrl;
+    this.names = si.names;
+    this.aiNames = si.aiNames || [];
+    this.myIndex = -1;
+    this.seed = si.seed >>> 0;
+    this.phase = 'playing';
+    this.cb.onGameStart(ctrl);
+    try {
+      this._liveUnwatch = watchLiveRoom(clean, {
+        onSnap: (snap) => { adopt(snap); this.cb.onRender(); },
+        onGone: () => {
+          if (this.ctrl && this.ctrl.finished) return; // keep the final board up
+          this.cb.onNotice('📡 게임이 끝나 관전을 종료해요.');
+          this.end();
+        },
+      });
+      this._specUnwatch = watchSpectators(clean, (n) => { this.spectators = n; ctrl.mp.spectators = n; this.cb.onRender(); });
+    } catch {
+      this.cb.onNotice('관전 연결에 실패했어요.');
+      this.end();
+    }
+  }
+
   /** Reset the 90s turn timer. Called on game start and after each action. */
   resetTurnTimer() {
+    if (this.role === 'spectator') return; // spectators follow the snapshot time
     this.turnDeadline = Date.now() + this.turnLimitMs;
   }
 
@@ -623,6 +706,7 @@ export class NetSession {
    * kept even when the host runs an old build. Ids are write-once per seat.
    */
   saveMatch() {
+    if (this.role === 'spectator') return;
     if (this._matchSaved || !this.ctrl || !this.ctrl.finished || !this.usePeer) return;
     this._matchSaved = true;
     const code = (this.room && this.room.code) || this.shortCode || this.lastCode || '';
@@ -805,10 +889,12 @@ export class NetSession {
 
   end() {
     this.stopTurnTimer();
+    if (this._specUnwatch) { try { this._specUnwatch(); } catch {} }
+    if (this._liveUnwatch) { try { this._liveUnwatch(); } catch {} }
     this._promoting = false;
     this._waitingForHost = 0;
     try { this.room?.close(); } catch { /* noop */ }
-    this.clearRejoin();
+    if (this.role !== 'spectator') this.clearRejoin(); // keep a player's own rejoin seat
     this.reset();
     this.cb.onGameEnd();
   }
