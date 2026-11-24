@@ -562,7 +562,7 @@ button.orsv:hover { border-color: #4ade80; }
 
 /* ---------- spectator chat: slim strip pinned to the viewport bottom ---------- */
 :root { --chat-h: 0px; }
-#specchat { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; margin: 0 auto; max-width: 480px; background: #14142a; border-top: 3px solid var(--ink); padding: 4px 10px calc(4px + env(safe-area-inset-bottom)); }
+#specchat { position: fixed; left: 0; right: 0; bottom: var(--kb, 0px); z-index: 6; margin: 0 auto; max-width: 480px; background: #14142a; border-top: 3px solid var(--ink); padding: 4px 10px calc(4px + env(safe-area-inset-bottom)); }
 #specchat[hidden] { display: none; }
 .sc-log { font-size: 11px; line-height: 1.5; color: #e5e7eb; }
 .sc-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

@@ -541,12 +541,45 @@ function syncChat() {
     : '';
   document.documentElement.style.setProperty('--chat-h', `${box.offsetHeight}px`);
 }
+// Typing must not move the page. Mobile browsers (iOS Safari) scroll the page
+// when an input in a bottom-pinned bar gets focus: focus without scrolling, put
+// the scroll position back if the browser moved it anyway, and lift the bar
+// above the on-screen keyboard using the visual viewport.
+function holdScroll(y) {
+  const back = () => { if (Math.abs(window.scrollY - y) > 1) window.scrollTo(window.scrollX, y); };
+  requestAnimationFrame(back);
+  [60, 150, 300, 500, 800].forEach((ms) => setTimeout(back, ms));
+}
+document.addEventListener('pointerdown', (e) => {
+  const input = e.target.closest && e.target.closest('.sc-input');
+  if (!input || document.activeElement === input) return;
+  e.preventDefault();
+  const y = window.scrollY;
+  input.focus({ preventScroll: true });
+  holdScroll(y);
+});
+document.addEventListener('focusin', (e) => {
+  if (e.target.classList && e.target.classList.contains('sc-input')) holdScroll(window.scrollY);
+});
+if (window.visualViewport) {
+  const vv = window.visualViewport;
+  const liftChat = () => {
+    // Keyboard height = layout viewport bottom hidden below the visual viewport.
+    const kb = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+    document.documentElement.style.setProperty('--kb', `${kb}px`);
+  };
+  vv.addEventListener('resize', liftChat);
+  vv.addEventListener('scroll', liftChat);
+}
+
 document.addEventListener('submit', (e) => {
   const form = e.target.closest && e.target.closest('.sc-form');
   if (!form) return;
   e.preventDefault();
   const input = form.querySelector('.sc-input');
+  const y = window.scrollY;
   if (net && input && net.sendChat(input.value)) input.value = '';
+  holdScroll(y);
 });
 
 let emoteBarOn = 'off';
