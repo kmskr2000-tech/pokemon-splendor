@@ -1,14 +1,14 @@
 // Pure HTML-string renderers. Each takes the controller and returns markup; main.js owns the DOM.
 // All text interpolated here comes from our own card data / constants (no user input).
 
-import { COLORS, MASTER, PHASES, TOKEN_KEYS } from '../core/constants.js?v=1795522268';
-import { getBonuses, getPoints, tokenCount, bonusList, isSpecial } from '../core/engine.js?v=1795522268';
-import { BALLS, TRAINERS, evoText } from './controller.js?v=1795522268';
-import { dexSummary } from '../storage/store.js?v=1795522268';
-import { ACHIEVEMENTS } from '../data/achievements.js?v=1795522268';
-import { CHALLENGES, challengeProgress } from '../data/challenges.js?v=1795522268';
-import { EVENT, formatRemain } from '../net/stats.js?v=1795522268';
-import { TONGUE_MAX } from '../net/session.js?v=1795522268';
+import { COLORS, MASTER, PHASES, TOKEN_KEYS } from '../core/constants.js?v=1795522533';
+import { getBonuses, getPoints, tokenCount, bonusList, isSpecial } from '../core/engine.js?v=1795522533';
+import { BALLS, TRAINERS, evoText } from './controller.js?v=1795522533';
+import { dexSummary } from '../storage/store.js?v=1795522533';
+import { ACHIEVEMENTS } from '../data/achievements.js?v=1795522533';
+import { CHALLENGES, challengeProgress } from '../data/challenges.js?v=1795522533';
+import { EVENT, formatRemain } from '../net/stats.js?v=1795522533';
+import { TONGUE_MAX } from '../net/session.js?v=1795522533';
 
 const diffLabel = { easy: '쉬움', normal: '보통', hard: '어려움' };
 

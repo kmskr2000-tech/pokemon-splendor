@@ -50,19 +50,19 @@ function showInAppGuide() {
 }
 showInAppGuide();
 
-import { CARDS } from '../data/cards.js?v=1795522268';
-import { ACHIEVEMENTS, checkAchievements } from '../data/achievements.js?v=1795522268';
-import { CHALLENGES, challengeWon } from '../data/challenges.js?v=1795522268';
-import { createController } from './controller.js?v=1795522268';
-import * as V from './view.js?v=1795522268';
-import { NetSession, EMOTES, TONGUE, TONGUE_MAX } from '../net/session.js?v=1795522268';
-import { listRooms, watchRooms, loadMatches, watchMatches } from '../net/fireroom.js?v=1795522268';
-import { aggregateStats, duelPairs, eventStandings, EVENT, formatRemain } from '../net/stats.js?v=1795522268';
-import { getBonuses, getPoints, bonusList } from '../core/engine.js?v=1795522268';
-import { startBGM, stopBGM, unlockAudio } from '../audio/bgm.js?v=1795522268';
-import { sfx, setSFXEnabled } from '../audio/sfx.js?v=1795522268';
-import { browserStorage, loadDex, loadSave, saveGame, clearSave, recordCatch, recordGame, loadOptions, saveOptions, loadAchv, unlockAchv, loadRecords, recordResult, victoryScore, loadChal, completeChal, getPlayerId } from '../storage/store.js?v=1795522268';
-import { createTurnAlerter } from './turn-alert.js?v=1795522268';
+import { CARDS } from '../data/cards.js?v=1795522533';
+import { ACHIEVEMENTS, checkAchievements } from '../data/achievements.js?v=1795522533';
+import { CHALLENGES, challengeWon } from '../data/challenges.js?v=1795522533';
+import { createController } from './controller.js?v=1795522533';
+import * as V from './view.js?v=1795522533';
+import { NetSession, EMOTES, TONGUE, TONGUE_MAX } from '../net/session.js?v=1795522533';
+import { listRooms, watchRooms, loadMatches, watchMatches } from '../net/fireroom.js?v=1795522533';
+import { aggregateStats, duelPairs, eventStandings, EVENT, formatRemain } from '../net/stats.js?v=1795522533';
+import { getBonuses, getPoints, bonusList } from '../core/engine.js?v=1795522533';
+import { startBGM, stopBGM, unlockAudio } from '../audio/bgm.js?v=1795522533';
+import { sfx, setSFXEnabled } from '../audio/sfx.js?v=1795522533';
+import { browserStorage, loadDex, loadSave, saveGame, clearSave, recordCatch, recordGame, loadOptions, saveOptions, loadAchv, unlockAchv, loadRecords, recordResult, victoryScore, loadChal, completeChal, getPlayerId } from '../storage/store.js?v=1795522533';
+import { createTurnAlerter } from './turn-alert.js?v=1795522533';
 
 const params = new URLSearchParams(location.search);
 const AI_DELAY = params.has('fast') ? 0 : 1600; // ?fast=1 skips the pacing delay (tests)
