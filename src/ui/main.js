@@ -141,6 +141,7 @@ function render() {
   if (ctrl) lastTurnPlayer = ctrl.game.current;
   else lastTurnPlayer = -1;
 
+  document.body.classList.toggle('spectating', !!(ctrl && ctrl.spectator));
   if (ctrl) for (const [id, fn] of Object.values(regions)) setHTML(id, fn(ctrl));
   let overlay;
   if (friendStats && net && !ctrl) {
@@ -248,7 +249,7 @@ function animateAIFromSnap(snap) {
   const ev = ctrl.lastAIEvent;
   if (!ev) return;
   // Spectators see seat `human` in the bottom panel.
-  const dst = ev.player === ctrl.human ? document.getElementById('me') : document.querySelector(`.opp[data-id="${ev.player}"]`);
+  const dst = document.querySelector(`.opp[data-id="${ev.player}"]`) || (ev.player === ctrl.human ? document.getElementById('me') : null);
   if (!dst) return;
   if (ev.type === 'buy' || ev.type === 'reserve') {
     flyClone(snap.get('card:' + ev.cardId), dst);
@@ -498,9 +499,9 @@ function closeFriendStats() {
   friendStats = null;
 }
 
-// Event countdowns: any element with class "evcount" shows time left until the event ends.
+// Event countdowns: any element with class "evtimer" shows time left until the event ends.
 setInterval(() => {
-  const els = document.querySelectorAll('.evcount');
+  const els = document.querySelectorAll('.evtimer');
   if (!els.length) return;
   const txt = formatRemain(EVENT.end - Date.now());
   els.forEach((e) => { if (e.textContent !== txt) e.textContent = txt; });

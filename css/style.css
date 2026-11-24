@@ -531,7 +531,7 @@ button.orsv:hover { border-color: #4ade80; }
 .evtitle { font-size: 14px; font-weight: bold; color: #fde68a; margin-bottom: 4px; }
 .evline { font-size: 12px; line-height: 1.7; }
 .evline b { color: #fde68a; }
-.evcount { font-variant-numeric: tabular-nums; color: #fde68a; }
+.evtimer { font-variant-numeric: tabular-nums; color: #fde68a; }
 .evinfo .sheet-p { margin-top: 0; }
 #emotebar button.tonguebtn { position: relative; background: #be185d; border-color: #fde68a; }
 #emotebar button.tonguebtn i { position: absolute; right: -6px; top: -6px; min-width: 18px; height: 18px; line-height: 18px; border-radius: 9px; background: #fde68a; color: #1a1a2e; font-size: 11px; font-style: normal; font-weight: bold; }
@@ -552,6 +552,10 @@ button.orsv:hover { border-color: #4ade80; }
 @keyframes tonguewag { from { transform: rotate(-9deg); } to { transform: rotate(9deg); } }
 
 /* ---------- spectating ---------- */
+.spectating #me { display: none; }
+/* four players: 2 x 2 */
+.spectating .opponents { flex-wrap: wrap; }
+.spectating .opp:first-child:nth-last-child(4), .spectating .opp:first-child:nth-last-child(4) ~ .opp { flex: 1 1 40%; }
 .roomitem.live { background: #1f2e2a; border-color: #14532d; }
 .roomitem.live .roommeta b { color: #86efac; }
 .livetag { color: #f87171; font-size: 12px; animation: blink 1.4s infinite; }

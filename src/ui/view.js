@@ -122,7 +122,8 @@ const bonusPips = (p) => {
 
 export function opponentsHTML(ctrl) {
   const s = ctrl.state;
-  return s.players.filter((p) => p.id !== ctrl.human).map((p) => {
+  // Spectators see every player up here (their bottom panel is hidden).
+  return s.players.filter((p) => ctrl.spectator || p.id !== ctrl.human).map((p) => {
     const tk = TOKEN_KEYS.filter((k) => p.tokens[k] > 0)
       .map((k) => `<span class="otp">${ballImg(k, 'mini2')}${p.tokens[k]}</span>`).join('');
     return `
@@ -639,7 +640,7 @@ export function challengeEndHTML(won, challenge) {
 
 // ---------- multiplayer rejoin ----------
 
-// Event banner: time left (live via .evcount) and the current leader(s).
+// Event banner: time left (live via .evtimer) and the current leader(s).
 export function eventBannerHTML(rows, now = Date.now()) {
   const over = now >= EVENT.end;
   const tops = (rows || []).filter((r) => r.rank === 1 && r.wins > 0);
@@ -649,7 +650,7 @@ export function eventBannerHTML(rows, now = Date.now()) {
   return `<div class="evbanner" data-action="net-stats" data-tab="event">
     <div class="evtitle">🎉 ${EVENT.title}${over ? ' 종료' : ''}</div>
     <div class="evline">${over ? '최종 우승' : '현재 1위'} 👑 ${lead}</div>
-    <div class="evline">${over ? '이벤트가 끝났어요' : `⏳ 종료까지 <span class="evcount">${formatRemain(EVENT.end - now)}</span>`}</div>
+    <div class="evline">${over ? '이벤트가 끝났어요' : `⏳ 종료까지 <span class="evtimer">${formatRemain(EVENT.end - now)}</span>`}</div>
   </div>`;
 }
 
@@ -657,7 +658,7 @@ function eventTabHTML(st) {
   const now = Date.now();
   const over = now >= EVENT.end;
   const head = `<div class="evinfo">
-    <p class="sheet-p">⏳ 종료까지 <b class="evcount">${formatRemain(EVENT.end - now)}</b><br>
+    <p class="sheet-p">⏳ 종료까지 <b class="evtimer">${formatRemain(EVENT.end - now)}</b><br>
     <small>${EVENT.startLabel} 이후 ~ ${EVENT.endLabel}까지 <b>추가된 승수</b>가 가장 많은 사람이 우승!<br>
     현재 1위는 게임 중 <b>😝 메롱</b>을 한 판에 ${TONGUE_MAX}번까지 쓸 수 있어요.</small></p></div>`;
   const ev = st.event || [];
