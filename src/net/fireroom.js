@@ -135,6 +135,34 @@ export function watchLiveRoom(code, { onSnap = () => {}, onGone = () => {}, onEm
   };
 }
 
+// Spectator chat: rooms/{code}/chat/{timeKey} = { name, text, at }.
+const CHAT_KEEP = 30;
+
+/** Spectator: post a chat line. Resolves true when stored. */
+export async function sendChat(code, name, text) {
+  const clean = String(text || '').replace(/\s+/g, ' ').trim().slice(0, 60);
+  if (!clean || !code) return false;
+  const key = `${Date.now().toString(36).padStart(9, '0')}${genId(4)}`;
+  try {
+    await getDb().ref(`${ROOMS_PATH}/${code}/chat/${key}`).set({ name: String(name || '관전자').slice(0, 12), text: clean, at: Date.now() });
+    return true;
+  } catch { return false; }
+}
+
+/** Live chat of a room: cb([{ id, name, text, at }]) oldest first, last CHAT_KEEP. Returns unsubscribe. */
+export function watchChat(code, cb) {
+  const ref = getDb().ref(`${ROOMS_PATH}/${code}/chat`);
+  const handler = (s) => {
+    const v = s.val() || {};
+    const list = Object.keys(v).sort().slice(-CHAT_KEEP)
+      .map((id) => ({ id, name: String(v[id].name || '관전자'), text: String(v[id].text || ''), at: Number(v[id].at) || 0 }))
+      .filter((m) => m.text);
+    cb(list);
+  };
+  ref.on('value', handler);
+  return () => { try { ref.off('value', handler); } catch {} };
+}
+
 /** Live spectator count of a room: cb(n). Returns unsubscribe. */
 export function watchSpectators(code, cb) {
   const ref = getDb().ref(`${ROOMS_PATH}/${code}/spectators`);

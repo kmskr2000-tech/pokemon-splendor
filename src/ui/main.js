@@ -164,6 +164,7 @@ function render() {
   else if (optionsOpen) overlay = V.optionsHTML(options);
   setHTML('overlay', overlay);
   syncEmoteBar();
+  syncChat();
   scheduleAI();
 }
 
@@ -382,6 +383,7 @@ function openNet() {
     onGameEnd: () => { stopLobbyWatch(); stopStatsWatch(); friendStats = null; stopTimerUpdater(); net = null; ctrl = null; render(); },
     onNotice: (msg) => { netNotice = msg; render(); },
     onEmote: showEmote,
+    onChat: () => syncChat(),
     // Other seats' moves (and spectator replays) fly like AI moves.
     beforeRemote: () => (ctrl ? { snap: snapshotMovables(), ev: ctrl.lastAIEvent } : null),
     afterRemote: (t) => {
@@ -506,6 +508,43 @@ setInterval(() => {
   const txt = formatRemain(EVENT.end - Date.now());
   els.forEach((e) => { if (e.textContent !== txt) e.textContent = txt; });
 }, 1000);
+
+// Spectator chat. Lives in the page flow under the board (never an overlay), so
+// it cannot cover a player's screen. Spectators type; players only read.
+let chatKey = '';
+function syncChat() {
+  const box = document.getElementById('specchat');
+  if (!box) return;
+  const playing = !!(net && ctrl && ctrl.mp && net.phase === 'playing');
+  const spec = playing && !!ctrl.spectator;
+  const list = playing ? (net.chat || []) : [];
+  const show = spec || list.length > 0;
+  const mode = !show ? 'off' : spec ? 'spec' : 'player';
+  if (box.dataset.mode !== mode) {
+    box.dataset.mode = mode;
+    box.hidden = !show;
+    box.innerHTML = !show ? '' : `<div class="sc-title">💬 관전 채팅${spec ? '' : ' <small>(관전자만 입력)</small>'}</div><div class="sc-log"></div>${
+      spec ? '<form class="sc-form"><input class="sc-input" maxlength="60" placeholder="관전자끼리 채팅 (플레이어에게도 보여요)" autocomplete="off"><button class="sc-send" type="submit">전송</button></form>' : ''}`;
+    chatKey = '';
+  }
+  if (!show) return;
+  const shown = spec ? list.slice(-20) : list.slice(-3);
+  const key = shown.map((m) => m.id).join(',');
+  if (key === chatKey) return;
+  chatKey = key;
+  const log = box.querySelector('.sc-log');
+  log.innerHTML = shown.length
+    ? shown.map((m) => `<div class="sc-line"><b>${esc2(m.name)}</b> ${esc2(m.text)}</div>`).join('')
+    : '<div class="sc-line none">아직 채팅이 없어요.</div>';
+  log.scrollTop = log.scrollHeight;
+}
+document.addEventListener('submit', (e) => {
+  const form = e.target.closest && e.target.closest('.sc-form');
+  if (!form) return;
+  e.preventDefault();
+  const input = form.querySelector('.sc-input');
+  if (net && input && net.sendChat(input.value)) input.value = '';
+});
 
 let emoteBarOn = 'off';
 function syncEmoteBar() {

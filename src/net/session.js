@@ -4,7 +4,7 @@
 import { CARDS } from '../data/cards.js?v=1795522670';
 import { createController } from '../ui/controller.js?v=1795522670';
 import { NetRoom } from './webrtc.js?v=1795522670';
-import { FirebaseRoom, writeMatch, loadMatches, readLiveRoom, watchLiveRoom, watchSpectators } from './fireroom.js?v=1795522670';
+import { FirebaseRoom, writeMatch, loadMatches, readLiveRoom, watchLiveRoom, watchSpectators, watchChat, sendChat } from './fireroom.js?v=1795522670';
 import { buildResults, cleanPid, eventStandings, eventLeaders, isEventActive } from './stats.js?v=1795522670';
 import { MSG, makeMsg, stateHash } from './protocol.js?v=1795522670';
 
@@ -65,6 +65,9 @@ export class NetSession {
     this.spectators = 0; // live spectator count of this room
     this._specUnwatch = null; // players: spectator-count watcher
     this._liveUnwatch = null; // spectator: snapshot watcher
+    this._chatUnwatch = null; // spectator chat watcher (players read, spectators read/write)
+    this.chat = []; // [{ id, name, text, at }]
+    this._chatAt = 0; // spectator: last sent time (cooldown)
     this._snapAt = 0; // spectator: time of the last committed action
   }
 
@@ -565,7 +568,27 @@ export class NetSession {
         if (this.ctrl && this.ctrl.mp) this.ctrl.mp.spectators = n;
         this.cb.onRender();
       });
+      this.watchChatOf(code);
     } catch { /* no DB (tests) */ }
+  }
+
+  watchChatOf(code) {
+    if (this._chatUnwatch) return;
+    this._chatUnwatch = watchChat(code, (list) => {
+      this.chat = list;
+      if (this.cb.onChat) this.cb.onChat(list);
+    });
+  }
+
+  /** Spectator: send a chat line (players cannot chat). Returns true when accepted. */
+  sendChat(text) {
+    if (this.role !== 'spectator' || this.phase !== 'playing' || !this.lastCode) return false;
+    const now = Date.now();
+    if (now - this._chatAt < 1500) return false;
+    if (!String(text || '').trim()) return false;
+    this._chatAt = now;
+    sendChat(this.lastCode, this.myName || '관전자', text);
+    return true;
   }
 
   // ---------- spectating (read-only) ----------
@@ -659,6 +682,7 @@ export class NetSession {
         },
       });
       this._specUnwatch = watchSpectators(clean, (n) => { this.spectators = n; ctrl.mp.spectators = n; this.cb.onRender(); });
+      this.watchChatOf(clean);
     } catch {
       this.cb.onNotice('관전 연결에 실패했어요.');
       this.end();
@@ -938,6 +962,7 @@ export class NetSession {
     this.stopTurnTimer();
     if (this._specUnwatch) { try { this._specUnwatch(); } catch {} }
     if (this._liveUnwatch) { try { this._liveUnwatch(); } catch {} }
+    if (this._chatUnwatch) { try { this._chatUnwatch(); } catch {} }
     this._promoting = false;
     this._waitingForHost = 0;
     try { this.room?.close(); } catch { /* noop */ }
