@@ -560,16 +560,18 @@ button.orsv:hover { border-color: #4ade80; }
 .roomitem.live .roommeta b { color: #86efac; }
 .livetag { color: #f87171; font-size: 12px; animation: blink 1.4s infinite; }
 
-/* ---------- spectator chat (in page flow, never over the board) ---------- */
-#specchat { margin: 8px 12px; background: var(--panel); border: 3px solid var(--ink); padding: 8px; }
+/* ---------- spectator chat: slim strip pinned to the viewport bottom ---------- */
+:root { --chat-h: 0px; }
+#specchat { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; margin: 0 auto; max-width: 480px; background: #14142a; border-top: 3px solid var(--ink); padding: 4px 10px calc(4px + env(safe-area-inset-bottom)); }
 #specchat[hidden] { display: none; }
-.sc-title { font-size: 11px; color: #a5b4fc; margin-bottom: 6px; }
-.sc-title small { color: var(--muted); }
-.sc-log { max-height: 150px; overflow-y: auto; font-size: 12px; line-height: 1.6; color: #e5e7eb; }
-#specchat[data-mode="player"] .sc-log { max-height: none; font-size: 11px; }
-.sc-line { word-break: break-all; }
-.sc-line b { color: #fde68a; margin-right: 4px; }
-.sc-line.none { color: var(--muted); }
-.sc-form { display: flex; gap: 6px; margin-top: 8px; }
-.sc-input { flex: 1; min-width: 0; font: inherit; font-size: 16px; padding: 6px 8px; background: #0f0f1e; color: #fff; border: 2px solid var(--ink); }
-.sc-send { font: inherit; font-size: 13px; padding: 6px 12px; background: #fbbf24; color: #1a1a2e; border: 2px solid var(--ink); font-weight: bold; }
+.sc-log { font-size: 11px; line-height: 1.5; color: #e5e7eb; }
+.sc-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sc-line b { color: #fde68a; margin-right: 2px; }
+.sc-form { display: flex; gap: 6px; margin-top: 4px; }
+.sc-input { flex: 1; min-width: 0; font: inherit; font-size: 16px; padding: 4px 8px; background: #0f0f1e; color: #fff; border: 2px solid var(--ink); }
+.sc-send { font: inherit; font-size: 13px; padding: 4px 12px; background: #fbbf24; color: #1a1a2e; border: 2px solid var(--ink); font-weight: bold; }
+/* Everything that sits at the bottom moves up by the strip's height. */
+.haschat .phone { padding-bottom: var(--chat-h); }
+.haschat .actionbar { bottom: var(--chat-h); }
+.haschat #emotebar { bottom: calc(96px + var(--chat-h)); }
+@media (min-width: 900px) { #specchat { max-width: 1120px; } }

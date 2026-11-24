@@ -509,8 +509,9 @@ setInterval(() => {
   els.forEach((e) => { if (e.textContent !== txt) e.textContent = txt; });
 }, 1000);
 
-// Spectator chat. Lives in the page flow under the board (never an overlay), so
-// it cannot cover a player's screen. Spectators type; players only read.
+// Spectator chat: a slim strip pinned to the bottom of the viewport for everyone.
+// The action bar and page are pushed up by its height (--chat-h), so it never
+// covers game controls. Spectators type; players only read.
 let chatKey = '';
 function syncChat() {
   const box = document.getElementById('specchat');
@@ -523,20 +524,22 @@ function syncChat() {
   if (box.dataset.mode !== mode) {
     box.dataset.mode = mode;
     box.hidden = !show;
-    box.innerHTML = !show ? '' : `<div class="sc-title">💬 관전 채팅${spec ? '' : ' <small>(관전자만 입력)</small>'}</div><div class="sc-log"></div>${
-      spec ? '<form class="sc-form"><input class="sc-input" maxlength="60" placeholder="관전자끼리 채팅 (플레이어에게도 보여요)" autocomplete="off"><button class="sc-send" type="submit">전송</button></form>' : ''}`;
+    box.innerHTML = !show ? '' : `<div class="sc-log"></div>${
+      spec ? '<form class="sc-form"><input class="sc-input" maxlength="60" placeholder="💬 관전 채팅 (플레이어에게도 보여요)" autocomplete="off"><button class="sc-send" type="submit">전송</button></form>' : ''}`;
     chatKey = '';
+    document.body.classList.toggle('haschat', show);
+    if (!show) document.documentElement.style.setProperty('--chat-h', '0px');
   }
   if (!show) return;
-  const shown = spec ? list.slice(-20) : list.slice(-3);
+  const shown = spec ? list.slice(-3) : list.slice(-2);
   const key = shown.map((m) => m.id).join(',');
   if (key === chatKey) return;
   chatKey = key;
   const log = box.querySelector('.sc-log');
   log.innerHTML = shown.length
-    ? shown.map((m) => `<div class="sc-line"><b>${esc2(m.name)}</b> ${esc2(m.text)}</div>`).join('')
-    : '<div class="sc-line none">아직 채팅이 없어요.</div>';
-  log.scrollTop = log.scrollHeight;
+    ? shown.map((m) => `<div class="sc-line">💬 <b>${esc2(m.name)}</b> ${esc2(m.text)}</div>`).join('')
+    : '';
+  document.documentElement.style.setProperty('--chat-h', `${box.offsetHeight}px`);
 }
 document.addEventListener('submit', (e) => {
   const form = e.target.closest && e.target.closest('.sc-form');
