@@ -576,3 +576,15 @@ button.orsv:hover { border-color: #4ade80; }
 .haschat #emotebar { bottom: calc(96px + var(--chat-h)); }
 @media (min-width: 900px) { #specchat { max-width: 1120px; } }
 .halfnote { font-size: 9px; color: var(--muted); white-space: nowrap; }
+
+/* ---------- final tournament ---------- */
+.finbanner { background: linear-gradient(135deg, #111, #3b2a00 60%, #7a5a00); border: 3px solid #fbbf24; box-shadow: 4px 4px 0 var(--ink); padding: 10px 12px; margin-bottom: 10px; color: #fff; cursor: pointer; text-align: center; }
+.finbanner:active { transform: translate(4px, 4px); box-shadow: none; }
+.fintitle { font-size: 15px; font-weight: bold; color: #fbbf24; margin-bottom: 4px; text-shadow: 2px 2px 0 #000; }
+.fintitle small { font-size: 11px; color: #fde68a; }
+.finline { font-size: 11px; line-height: 1.7; color: #e5e7eb; }
+.finline.names { font-size: 12px; color: #fff; }
+.finline b { color: #fbbf24; }
+.finline small { color: #c9b98a; }
+.rules.notice { max-height: 60vh; overflow-y: auto; }
+.rank td.lpcell { white-space: nowrap; color: var(--gold); }

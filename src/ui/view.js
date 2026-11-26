@@ -7,7 +7,7 @@ import { BALLS, TRAINERS, evoText } from './controller.js?v=1795653369';
 import { dexSummary } from '../storage/store.js?v=1795653369';
 import { ACHIEVEMENTS } from '../data/achievements.js?v=1795653369';
 import { CHALLENGES, challengeProgress } from '../data/challenges.js?v=1795653369';
-import { EVENT, formatRemain } from '../net/stats.js?v=1795653369';
+import { EVENT, FINAL, formatRemain, leaguePoints } from '../net/stats.js?v=1795653369';
 import { TONGUE_MAX, TONGUE_LEADER_BONUS } from '../net/session.js?v=1795653369';
 
 const diffLabel = { easy: '쉬움', normal: '보통', hard: '어려움' };
@@ -648,25 +648,76 @@ export function eventBannerHTML(rows, now = Date.now()) {
     : tops.length ? `${tops.map((r) => esc(r.name)).join(', ')} <b>${tops[0].wins}승</b>`
       : '아직 없음';
   return `<div class="evbanner" data-action="net-stats" data-tab="event">
-    <div class="evtitle">🎉 ${EVENT.title}${over ? ' 종료' : ''}</div>
-    <div class="evline">${over ? '최종 우승' : '현재 1위'} 👑 ${lead}</div>
-    <div class="evline">${over ? '이벤트가 끝났어요' : `⏳ 종료까지 <span class="evtimer">${formatRemain(EVENT.end - now)}</span>`}</div>
+    <div class="evtitle">🎉 최다승 리그${over ? ' 종료' : ''}</div>
+    <div class="evline">${over ? '리그 최종 1위' : '현재 1위'} 👑 ${lead}</div>
+    <div class="evline">${over ? '리그가 끝났어요' : `⏳ 리그 마감까지 <span class="evtimer">${formatRemain(EVENT.end - now)}</span>`}</div>
   </div>`;
+}
+
+// Final tournament teaser banner (the event's last stage). Opens the notice.
+export function finalBannerHTML(rows, now = Date.now()) {
+  const lp = leaguePoints(rows || []).slice(0, FINAL.slots);
+  const names = rows == null ? '불러오는 중…'
+    : lp.length ? lp.map((r) => `${r.seed === 1 ? '👑' : ''}${esc(r.name)} <b>${r.lp}</b>`).join(' · ')
+      : '아직 없음';
+  const leagueOver = now >= EVENT.end;
+  return `<div class="finbanner" data-action="net-notice">
+    <div class="fintitle">🏆 ${FINAL.title} <small>${FINAL.dayLabel}</small></div>
+    <div class="finline">${leagueOver ? '진출 확정' : '현재 진출권 (리그 점수)'}</div>
+    <div class="finline names">${names}</div>
+    <div class="finline"><small>리그 점수 + 1:1 토너먼트 점수 = 최종 우승 · 탭해서 규칙 보기</small></div>
+  </div>`;
+}
+
+// Event rules notice (shown once per player, reopenable from the lobby).
+export function noticeHTML() {
+  const [p1, p2, p3, p4] = FINAL.points;
+  return `<div class="overlay"><div class="panel netpanel">
+    <div class="title">📢 이벤트 공지 <small>11/26 업데이트</small></div>
+    <div class="rules notice">
+      <h4>■ 리그 연장</h4>
+      <p>• 리그 마감: <b>${EVENT.endLabel}</b> (일주일 연장)<br>
+      • 11/26 오전 9시 45분 이전에 쌓은 추가 승수는 <b>절반</b>만 인정. 이후 승리는 1승씩.<br>
+      • 😝 메롱: <b>모두</b> 한 판 ${TONGUE_MAX}번, 현재 1위는 ${TONGUE_MAX + TONGUE_LEADER_BONUS}번.</p>
+      <h4>■ 🏆 파이널 토너먼트 (${FINAL.dayLabel} 하루)</h4>
+      <p>• 진출: 리그 <b>상위 ${FINAL.slots}명</b> (5위는 예비)<br>
+      • 리그 점수: <b>${FINAL.leagueMax} × 내 승수 ÷ 1위 승수</b> (0.5점 단위)<br>
+      • 방식: <b>1:1</b>, AI 없음. 4강·3·4위전 3판 2선승, 결승 5판 3선승<br>
+      • 토너먼트 점수: 우승 <b>${p1}</b> / 준우승 <b>${p2}</b> / 3위 <b>${p3}</b> / 4위 <b>${p4}</b><br>
+      • <b>최종 우승 = 리그 점수 + 토너먼트 점수</b> (동점이면 토너먼트 순위)</p>
+      <h4>■ 당일 일정</h4>
+      <p>• 오전 9시: 리그 마감, 진출자 확정<br>
+      • ~ 정오: 리그 1위가 4강 상대 지명 (안 고르면 4위와 대결)<br>
+      • 정오 ~ 자정: 4강 → 3·4위전·결승<br>
+      • 자정까지 못 치른 경기는 리그 순위가 높은 쪽 부전승</p>
+      <h4>■ 👑 리그 1위 혜택</h4>
+      <p>• 4강을 <b>1승 먼저 안고</b> 시작 (1-0)<br>
+      • 4강 <b>상대 지명권</b><br>
+      • 리그 챔피언 칭호, 메롱 ${TONGUE_MAX + TONGUE_LEADER_BONUS}번</p>
+      <h4>■ 경기 방법</h4>
+      <p>• 대진이 정해지면 배너에 <b>"내 경기 입장"</b> 버튼이 떠요. 둘 다 누르면 전용 방에서 만나요.<br>
+      • 전용 방에서 끝난 판만 인정. 공동 1등은 무효, 재경기.<br>
+      • 리그 때 쓰던 <b>같은 기기·브라우저</b>로 접속해야 본인으로 인식돼요.<br>
+      • 다른 사람은 관전·채팅으로 구경할 수 있어요.</p>
+    </div>
+    <div class="btnrow"><button class="btn primary" data-action="net-notice-close">확인</button></div>
+  </div></div>`;
 }
 
 function eventTabHTML(st) {
   const now = Date.now();
   const over = now >= EVENT.end;
   const head = `<div class="evinfo">
-    <p class="sheet-p">⏳ 종료까지 <b class="evtimer">${formatRemain(EVENT.end - now)}</b><br>
-    <small>${EVENT.startLabel} 이후 ~ ${EVENT.endLabel}까지 <b>추가된 승수</b>가 가장 많은 사람이 우승!<br>
+    <p class="sheet-p">⏳ 리그 마감까지 <b class="evtimer">${formatRemain(EVENT.end - now)}</b><br>
+    <small>${EVENT.startLabel} 이후 ~ ${EVENT.endLabel}까지 <b>추가된 승수</b>로 리그 순위를 정해요. 상위 ${FINAL.slots}명이 🏆 파이널 진출!<br>
     <b>🔥 연장전</b>: 11/26 오전 9시 45분 이전 승수는 <b>절반</b>만 인정돼요.<br>
     모두 게임 중 <b>😝 메롱</b>을 한 판에 ${TONGUE_MAX}번, 현재 1위는 ${TONGUE_MAX + TONGUE_LEADER_BONUS}번 쓸 수 있어요.</small></p></div>`;
-  const ev = st.event || [];
+  const ev = leaguePoints(st.event || []);
   if (!ev.length) return `${head}<p class="sheet-p">아직 이벤트 기간에 끝난 대전이 없어요.</p>`;
   const crown = (r) => (r.rank === 1 && r.wins > 0 ? (over ? '🏆' : '👑') : r.rank);
-  const rows = ev.map((r) => `<tr class="${r.pid === st.myPid ? 'me' : ''}${r.rank === 1 && r.wins > 0 ? ' win' : ''}"><td>${crown(r)}</td><td>${esc(r.name)}${r.pid === st.myPid ? ' (나)' : ''}</td><td>${r.wins}${r.preWins ? `<br><small class="halfnote">이전 ${r.preWins}→${r.preWins / 2}</small>` : ''}</td><td>${r.games}</td></tr>`).join('');
-  return `${head}<table class="rank"><tr><th></th><th>이름</th><th>추가 승</th><th>판</th></tr>${rows}</table>
+  const rows = ev.map((r) => `<tr class="${r.pid === st.myPid ? 'me' : ''}${r.rank === 1 && r.wins > 0 ? ' win' : ''}"><td>${crown(r)}</td><td>${esc(r.name)}${r.pid === st.myPid ? ' (나)' : ''}</td><td>${r.wins}${r.preWins ? `<br><small class="halfnote">이전 ${r.preWins}→${r.preWins / 2}</small>` : ''}</td><td>${r.games}</td><td class="lpcell">${r.lp}${r.seed <= FINAL.slots ? ' 🏆' : ''}</td></tr>`).join('');
+  return `${head}<table class="rank"><tr><th></th><th>이름</th><th>추가 승</th><th>판</th><th>리그 점수</th></tr>${rows}</table>
+    <p class="sheet-p"><small>🏆 = 파이널 진출권 (상위 ${FINAL.slots}명). 리그 점수 = ${FINAL.leagueMax} × 내 승수 ÷ 1위 승수.</small></p>
     <p class="sheet-p"><small>🔴 실시간 반영. 단독 1등만 승리로 쳐요. 승수가 같으면 공동 순위.</small></p>`;
 }
 
@@ -750,7 +801,7 @@ export function netHTML(net, notice = '') {
             <div class="roomtitle">${esc(r.title)}</div>
             <div class="roommeta">👑 ${esc(r.hostName)} · ${r.playerCount}/4명 · ⏱ ${Math.round((r.turnLimitMs || 45000) / 1000)}초</div>
           </div>`)).join('');
-      body = `${eventBannerHTML(net.eventRows)}
+      body = `${finalBannerHTML(net.eventRows)}${eventBannerHTML(net.eventRows)}
         <p class="sheet-p">친구와 대전해요. 방을 골라 입장하세요. (2~4인)</p>
         <div class="roomlist">${roomHtml}</div>
         ${(() => { const rj = typeof net.peekRejoin === 'function' ? net.peekRejoin() : null;
@@ -759,6 +810,7 @@ export function netHTML(net, notice = '') {
         <button class="btn ghost" data-action="net-lobby-refresh">🔄 새로고침</button></div>
         <div class="btnrow">${modeBtn}
         <button class="btn ghost" data-action="net-help">❓ 대전 방법</button></div>
+        <div class="btnrow"><button class="btn alt" data-action="net-notice">📢 이벤트 공지</button></div>
         <div class="btnrow"><button class="btn alt" data-action="net-stats">🏆 친구 전적</button>
         <button class="btn ghost" data-action="net-leave">닫기</button></div>`;
       break;

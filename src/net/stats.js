@@ -209,3 +209,29 @@ export function formatRemain(ms) {
   const pad = (n) => String(n).padStart(2, '0');
   return `${d ? `${d}일 ` : ''}${pad(h)}:${pad(m)}:${pad(sec)}`;
 }
+
+// ---------- final tournament (after the league) ----------
+
+// League points + 1:1 tournament points decide the overall winner.
+export const FINAL = {
+  title: '파이널 토너먼트',
+  slots: 4, // league top N advance (next one is the reserve)
+  leagueMax: 10, // league points of the league winner
+  pickBy: Date.UTC(2026, 11, 3, 3, 0, 0), // 2026-12-03 12:00 KST: leader picks a semifinal opponent
+  end: Date.UTC(2026, 11, 3, 15, 0, 0), // 2026-12-03 24:00 KST: unplayed matches are forfeited
+  points: [10, 6, 3, 0], // champion, runner-up, 3rd, 4th
+  dayLabel: '12/3(목)',
+};
+
+/**
+ * League points for event standings rows: leagueMax x wins / leader's wins,
+ * rounded to 0.5. Adds `lp` and `seed` (1-based league order) to each row.
+ */
+export function leaguePoints(rows, fin = FINAL) {
+  const top = Math.max(0, ...(rows || []).map((r) => r.wins));
+  return (rows || []).map((r, i) => ({
+    ...r,
+    seed: i + 1,
+    lp: top > 0 ? Math.round((fin.leagueMax * r.wins / top) * 2) / 2 : 0,
+  }));
+}

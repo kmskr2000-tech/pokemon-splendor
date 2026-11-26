@@ -87,6 +87,8 @@ let aiTimer = null;
 let net = null; // NetSession while in multiplayer menu/lobby/game
 let netNotice = ''; // one-shot notice shown on the start/net screen
 let netHelpOpen = false;
+let noticeOpen = false; // event rules notice
+const NOTICE_KEY = 'pks-notice-final-v1'; // bump to show a new notice once to everyone
 let friendStats = null; // { loading, error, rows, myPid } while the friend-stats overlay is open
 let dexOpen = false;
 let dexDetail = null;
@@ -146,6 +148,8 @@ function render() {
   let overlay;
   if (friendStats && net && !ctrl) {
     overlay = V.friendStatsHTML(friendStats);
+  } else if (noticeOpen && net && !ctrl) {
+    overlay = V.noticeHTML();
   } else if (netHelpOpen && net) {
     overlay = V.netHelpHTML();
   } else if (net && !ctrl) {
@@ -395,6 +399,8 @@ function openNet() {
   net.myName = options.playerName || ''; // pre-fill saved name
   net.roomList = [];
   net.eventRows = null; // lobby event banner (current leader)
+  // Show the updated event rules once to every player.
+  try { if (!storage?.getItem(NOTICE_KEY)) noticeOpen = true; } catch {}
   loadMatches().then((m) => { if (net) { net.eventRows = eventStandings(m); render(); } }).catch(() => {});
   refreshLobby();
   render();
@@ -733,6 +739,11 @@ document.addEventListener('click', (e) => {
       netNotice = '';
     } break;
     case 'net-help': netHelpOpen = true; break;
+    case 'net-notice': noticeOpen = true; break;
+    case 'net-notice-close':
+      noticeOpen = false;
+      try { storage?.setItem(NOTICE_KEY, '1'); } catch {}
+      break;
     case 'net-stats': case 'net-stats-refresh': openFriendStats(); break;
     case 'net-stats-close': closeFriendStats(); break;
     case 'net-stats-tab': if (friendStats) friendStats.tab = ['duel', 'event'].includes(d.tab) ? d.tab : 'all'; break;
@@ -791,7 +802,7 @@ document.addEventListener('click', (e) => {
       if (t) { t.select(); try { navigator.clipboard.writeText(t.value); netNotice = '복사됐어요.'; } catch { netNotice = '복사가 안 되면 직접 드래그해서 복사해주세요.'; } }
       break;
     }
-    case 'net-leave': if (net) { netHelpOpen = false; closeFriendStats(); net.end(); return; } break;
+    case 'net-leave': if (net) { netHelpOpen = false; noticeOpen = false; closeFriendStats(); net.end(); return; } break;
     case 'tut-next': tutAdvance(); return;
     case 'tut-done': tutorial = null; break;
     case 'tut-skip': tutorial = null; break;
