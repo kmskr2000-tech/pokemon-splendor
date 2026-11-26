@@ -8,7 +8,7 @@ import { dexSummary } from '../storage/store.js?v=1795523207';
 import { ACHIEVEMENTS } from '../data/achievements.js?v=1795523207';
 import { CHALLENGES, challengeProgress } from '../data/challenges.js?v=1795523207';
 import { EVENT, formatRemain } from '../net/stats.js?v=1795523207';
-import { TONGUE_MAX } from '../net/session.js?v=1795523207';
+import { TONGUE_MAX, TONGUE_LEADER_BONUS } from '../net/session.js?v=1795523207';
 
 const diffLabel = { easy: '쉬움', normal: '보통', hard: '어려움' };
 
@@ -660,11 +660,12 @@ function eventTabHTML(st) {
   const head = `<div class="evinfo">
     <p class="sheet-p">⏳ 종료까지 <b class="evtimer">${formatRemain(EVENT.end - now)}</b><br>
     <small>${EVENT.startLabel} 이후 ~ ${EVENT.endLabel}까지 <b>추가된 승수</b>가 가장 많은 사람이 우승!<br>
-    현재 1위는 게임 중 <b>😝 메롱</b>을 한 판에 ${TONGUE_MAX}번까지 쓸 수 있어요.</small></p></div>`;
+    <b>🔥 연장전</b>: 11/26 오전 9시 45분 이전 승수는 <b>절반</b>만 인정돼요.<br>
+    모두 게임 중 <b>😝 메롱</b>을 한 판에 ${TONGUE_MAX}번, 현재 1위는 ${TONGUE_MAX + TONGUE_LEADER_BONUS}번 쓸 수 있어요.</small></p></div>`;
   const ev = st.event || [];
   if (!ev.length) return `${head}<p class="sheet-p">아직 이벤트 기간에 끝난 대전이 없어요.</p>`;
   const crown = (r) => (r.rank === 1 && r.wins > 0 ? (over ? '🏆' : '👑') : r.rank);
-  const rows = ev.map((r) => `<tr class="${r.pid === st.myPid ? 'me' : ''}${r.rank === 1 && r.wins > 0 ? ' win' : ''}"><td>${crown(r)}</td><td>${esc(r.name)}${r.pid === st.myPid ? ' (나)' : ''}</td><td>${r.wins}</td><td>${r.games}</td></tr>`).join('');
+  const rows = ev.map((r) => `<tr class="${r.pid === st.myPid ? 'me' : ''}${r.rank === 1 && r.wins > 0 ? ' win' : ''}"><td>${crown(r)}</td><td>${esc(r.name)}${r.pid === st.myPid ? ' (나)' : ''}</td><td>${r.wins}${r.preWins ? `<br><small class="halfnote">이전 ${r.preWins}→${r.preWins / 2}</small>` : ''}</td><td>${r.games}</td></tr>`).join('');
   return `${head}<table class="rank"><tr><th></th><th>이름</th><th>추가 승</th><th>판</th></tr>${rows}</table>
     <p class="sheet-p"><small>🔴 실시간 반영. 단독 1등만 승리로 쳐요. 승수가 같으면 공동 순위.</small></p>`;
 }

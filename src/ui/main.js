@@ -55,9 +55,9 @@ import { ACHIEVEMENTS, checkAchievements } from '../data/achievements.js?v=17955
 import { CHALLENGES, challengeWon } from '../data/challenges.js?v=1795523207';
 import { createController } from './controller.js?v=1795523207';
 import * as V from './view.js?v=1795523207';
-import { NetSession, EMOTES, TONGUE, TONGUE_MAX } from '../net/session.js?v=1795523207';
+import { NetSession, EMOTES, TONGUE } from '../net/session.js?v=1795523207';
 import { listRooms, watchRooms, loadMatches, watchMatches } from '../net/fireroom.js?v=1795523207';
-import { aggregateStats, duelPairs, eventStandings, EVENT, formatRemain } from '../net/stats.js?v=1795523207';
+import { aggregateStats, duelPairs, eventStandings, EVENT, formatRemain, isEventActive } from '../net/stats.js?v=1795523207';
 import { getBonuses, getPoints, bonusList } from '../core/engine.js?v=1795523207';
 import { startBGM, stopBGM, unlockAudio } from '../audio/bgm.js?v=1795523207';
 import { sfx, setSFXEnabled } from '../audio/sfx.js?v=1795523207';
@@ -588,8 +588,11 @@ function syncEmoteBar() {
   if (!bar) return;
   const on = !!(net && ctrl && ctrl.mp && !ctrl.spectator && !ctrl.finished && net.phase === 'playing');
   // Event leader gets an extra 메롱 button with its per-game uses left.
-  const left = on && typeof net.tongueLeft === 'function' && net.eventLeaders && net.eventLeaders.size ? net.tongueLeft() : 0;
-  const lead = on && net.eventLeaders && net.eventLeaders.has(net.myPid);
+  // Event emote for every player while the event runs (leader has extra uses).
+  const evOn = on && typeof net.tongueLeft === 'function' && isEventActive();
+  const left = evOn ? net.tongueLeft() : 0;
+  const lead = evOn;
+  const max = evOn ? net.tongueMax() : 0;
   const key = on ? `on:${lead ? left : '-'}` : 'off';
   if (key === emoteBarOn) return;
   emoteBarOn = key;
@@ -597,7 +600,7 @@ function syncEmoteBar() {
   // Text emotes (e.g. '중국인') get a wider, smaller-font button than emoji ones.
   const isText = (k) => /^[\p{L}\p{N}]+$/u.test(k);
   const tongueBtn = lead
-    ? `<button class="tonguebtn" data-action="emote" data-k="${TONGUE}" ${left ? '' : 'disabled'} aria-label="이벤트 1위 전용 메롱 (${left}/${TONGUE_MAX})">😝<i>${left}</i></button>`
+    ? `<button class="tonguebtn" data-action="emote" data-k="${TONGUE}" ${left ? '' : 'disabled'} aria-label="이벤트 메롱 (${left}/${max})">😝<i>${left}</i></button>`
     : '';
   bar.innerHTML = on ? tongueBtn + EMOTES.map((k) => `<button class="${isText(k) ? 'txt' : ''}" data-action="emote" data-k="${k}" aria-label="이모티콘 ${k}">${k}</button>`).join('') : '';
 }

@@ -575,3 +575,4 @@ button.orsv:hover { border-color: #4ade80; }
 .haschat .actionbar { bottom: var(--chat-h); }
 .haschat #emotebar { bottom: calc(96px + var(--chat-h)); }
 @media (min-width: 900px) { #specchat { max-width: 1120px; } }
+.halfnote { font-size: 9px; color: var(--muted); white-space: nowrap; }

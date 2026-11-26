@@ -125,9 +125,11 @@ export function duelPairs(matches, myPid = '') {
 export const EVENT = {
   title: '최다승 이벤트',
   start: Date.UTC(2026, 10, 23, 5, 35, 0), // snapshot, 2026-11-23 14:35 KST (emote gate only)
-  end: Date.UTC(2026, 10, 26, 0, 0, 0), // 2026-11-26 09:00 KST
+  end: Date.UTC(2026, 11, 3, 0, 0, 0), // 2026-12-03 09:00 KST (extended one week from 11/26)
+  // Second-round patch: event wins earned before `halveAt` count half.
+  halveAt: Date.UTC(2026, 10, 26, 0, 45, 0), // 2026-11-26 09:45 KST
   startLabel: '11/23 전적 스냅샷',
-  endLabel: '11/26(목) 오전 9시',
+  endLabel: '12/3(목) 오전 9시',
   // Friend stats snapshot: wins, games (= wins + draws + losses).
   baseline: [
     { name: '임실장', wins: 231, games: 502 },
@@ -147,6 +149,21 @@ export const isEventActive = (now = Date.now(), ev = EVENT) => now >= ev.start &
  * after the snapshot are listed. -> [{ ...aggregateStats row, wins, games, rank }]
  */
 export function eventStandings(matches, ev = EVENT) {
+  if (!ev.halveAt) return addedWins(matches, ev);
+  // Wins added before halveAt count half; later wins count in full. Games stay whole.
+  const pre = new Map(addedWins(matches, { ...ev, end: Math.min(ev.halveAt, ev.end) }).map((r) => [r.pid, r]));
+  const rows = addedWins(matches, ev).map((r) => {
+    const p = pre.get(r.pid);
+    const preWins = p ? p.wins : 0;
+    return { ...r, wins: preWins / 2 + (r.wins - preWins), preWins };
+  });
+  rows.sort((a, b) => b.wins - a.wins || a.games - b.games || b.lastAt - a.lastAt);
+  rows.forEach((r) => { r.rank = 1 + rows.filter((o) => o.wins > r.wins).length; });
+  return rows;
+}
+
+/** Wins and games added since the snapshot baseline, for matches before ev.end. */
+function addedWins(matches, ev) {
   const inWin = {};
   const names = new Map(); // pid -> every name used
   for (const [k, m] of Object.entries(matches || {})) {

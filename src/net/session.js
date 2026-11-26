@@ -11,9 +11,11 @@ import { MSG, makeMsg, stateHash } from './protocol.js?v=1795523207';
 const MAX_PLAYERS = 4;
 export const EMOTES = ['😂', '🖕', '⏰', '중국인'];
 const EMOTE_COOLDOWN_MS = 2500;
-// Event emote: only the current event leader may send it, TONGUE_MAX times per game.
+// Event emote: every player may send it TONGUE_MAX times per game; the current
+// event leader gets TONGUE_LEADER_BONUS more.
 export const TONGUE = '메롱';
 export const TONGUE_MAX = 3;
+export const TONGUE_LEADER_BONUS = 2;
 // Host waits this long past the shown deadline before forcing a timeout, so an
 // action sent at the last second (Firebase relay ~1-2s) still counts.
 const TIMEOUT_GRACE_MS = 2500;
@@ -466,12 +468,21 @@ export class NetSession {
     return true;
   }
 
-  /** Event emotes this seat may still send this game (0 = not the leader / used up / event over). */
+  /** Is this seat's player an event leader? */
+  isLeader(seat = this.myIndex) {
+    const pid = seat === this.myIndex && this.myPid ? this.myPid : cleanPid(this.pids[seat]);
+    return !!pid && this.eventLeaders.has(pid);
+  }
+
+  /** Event emote uses allowed this game for a seat (every player; leader gets a bonus). */
+  tongueMax(seat = this.myIndex) {
+    return TONGUE_MAX + (this.isLeader(seat) ? TONGUE_LEADER_BONUS : 0);
+  }
+
+  /** Event emotes this seat may still send this game (0 = used up / event over). */
   tongueLeft(seat = this.myIndex) {
     if (!isEventActive(this.now())) return 0;
-    const pid = seat === this.myIndex && this.myPid ? this.myPid : cleanPid(this.pids[seat]);
-    if (!pid || !this.eventLeaders.has(pid)) return 0;
-    return Math.max(0, TONGUE_MAX - (this._tongueUsed[seat] || 0));
+    return Math.max(0, this.tongueMax(seat) - (this._tongueUsed[seat] || 0));
   }
 
   /** Load event standings and remember the current leaders (every client, at game start). */
