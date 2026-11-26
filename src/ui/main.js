@@ -56,8 +56,9 @@ import { CHALLENGES, challengeWon } from '../data/challenges.js?v=1795654245';
 import { createController } from './controller.js?v=1795654245';
 import * as V from './view.js?v=1795654245';
 import { NetSession, EMOTES, TONGUE } from '../net/session.js?v=1795654245';
-import { listRooms, watchRooms, loadMatches, watchMatches } from '../net/fireroom.js?v=1795654245';
-import { aggregateStats, duelPairs, eventStandings, EVENT, formatRemain, isEventActive } from '../net/stats.js?v=1795654245';
+import { listRooms, watchRooms, loadMatches, watchMatches, watchFinalPick, writeFinalPick } from '../net/fireroom.js?v=1795654245';
+import { aggregateStats, duelPairs, eventStandings, EVENT, FINAL, formatRemain } from '../net/stats.js?v=1795654245';
+import { finalState, myOpenMatch, finalRoomPrefix, MATCH_LABEL } from '../net/final.js?v=1795654245';
 import { getBonuses, getPoints, bonusList } from '../core/engine.js?v=1795654245';
 import { startBGM, stopBGM, unlockAudio } from '../audio/bgm.js?v=1795654245';
 import { sfx, setSFXEnabled } from '../audio/sfx.js?v=1795654245';
@@ -88,6 +89,20 @@ let net = null; // NetSession while in multiplayer menu/lobby/game
 let netNotice = ''; // one-shot notice shown on the start/net screen
 let netHelpOpen = false;
 let noticeOpen = false; // event rules notice
+let champOpen = false; // final winner announcement
+const CHAMP_KEY = 'pks-final-champ-seen-v1';
+const champSeen = () => { try { return !!storage?.getItem(CHAMP_KEY); } catch { return true; } };
+// Final tournament state for the lobby/stats, recomputed when its inputs change
+// (match records, the pick) or the clock moves on (phase deadlines).
+let _finMemo = { m: null, p: null, t: -1, v: null };
+function finalNow() {
+  if (!net || !net.matches) return null;
+  const t = Math.floor(Date.now() / 5000);
+  if (_finMemo.m !== net.matches || _finMemo.p !== net.finalPick || _finMemo.t !== t) {
+    _finMemo = { m: net.matches, p: net.finalPick, t, v: finalState(net.matches, net.finalPick || null, Date.now()) };
+  }
+  return _finMemo.v;
+}
 const NOTICE_KEY = 'pks-notice-final-v1'; // bump to show a new notice once to everyone
 let friendStats = null; // { loading, error, rows, myPid } while the friend-stats overlay is open
 let dexOpen = false;
@@ -146,7 +161,15 @@ function render() {
   document.body.classList.toggle('spectating', !!(ctrl && ctrl.spectator));
   if (ctrl) for (const [id, fn] of Object.values(regions)) setHTML(id, fn(ctrl));
   let overlay;
-  if (friendStats && net && !ctrl) {
+  if (net && !ctrl) {
+    net.finalState = finalNow();
+    if (friendStats) friendStats.final = net.finalState;
+    // Announce the overall winner once.
+    if (net.finalState && net.finalState.phase === 'done' && !champSeen()) champOpen = true;
+  }
+  if (champOpen && net && !ctrl && net.finalState && net.finalState.champion) {
+    overlay = V.championHTML(net.finalState);
+  } else if (friendStats && net && !ctrl) {
     overlay = V.friendStatsHTML(friendStats);
   } else if (noticeOpen && net && !ctrl) {
     overlay = V.noticeHTML();
@@ -384,7 +407,7 @@ function openNet() {
       startTimerUpdater();
       render();
     },
-    onGameEnd: () => { stopLobbyWatch(); stopStatsWatch(); friendStats = null; stopTimerUpdater(); net = null; ctrl = null; render(); },
+    onGameEnd: () => { stopLobbyWatch(); stopEventWatch(); stopStatsWatch(); friendStats = null; stopTimerUpdater(); net = null; ctrl = null; render(); },
     onNotice: (msg) => { netNotice = msg; render(); },
     onEmote: showEmote,
     onChat: () => syncChat(),
@@ -401,12 +424,67 @@ function openNet() {
   net.eventRows = null; // lobby event banner (current leader)
   // Show the updated event rules once to every player.
   try { if (!storage?.getItem(NOTICE_KEY)) noticeOpen = true; } catch {}
-  loadMatches().then((m) => { if (net) { net.eventRows = eventStandings(m); render(); } }).catch(() => {});
+  net.matches = null; // live match records (league standings + tournament sets)
+  net.finalPick = null; // league winner's semifinal pick
+  const gotMatches = (m) => {
+    if (!net) return;
+    net.matches = m;
+    net.eventRows = eventStandings(m);
+    if (!ctrl) render();
+  };
+  stopEventWatch();
+  try {
+    const u1 = watchMatches(gotMatches, () => {});
+    const u2 = watchFinalPick((p) => { if (net) { net.finalPick = p; if (!ctrl) render(); } });
+    _eventUnwatch = () => { u1(); u2(); };
+  } catch {
+    loadMatches().then(gotMatches).catch(() => {});
+  }
   refreshLobby();
   render();
 }
 
 let _lobbyUnwatch = null;
+let _eventUnwatch = null;
+function stopEventWatch() {
+  if (_eventUnwatch) { try { _eventUnwatch(); } catch {} _eventUnwatch = null; }
+}
+
+// Tournament: enter my match's dedicated room (join it if my opponent already
+// opened one, otherwise open it and wait).
+async function enterFinalMatch() {
+  if (!net || net.phase !== 'menu') return;
+  const myPid = net.myPid;
+  const m = myOpenMatch(finalNow(), myPid);
+  if (!m) { netNotice = '지금 치를 토너먼트 경기가 없어요.'; render(); return; }
+  const me = m.a.pid === myPid ? m.a : m.b;
+  const name = savePlayerName(me.name);
+  closeFriendStats();
+  let rooms = net.roomList || [];
+  try { rooms = await listRooms(); } catch { /* use the watched list */ }
+  if (!net || net.phase !== 'menu') return;
+  const mine = (r) => r.final && r.final.key === m.key && (r.final.pids || []).includes(myPid);
+  const open = rooms.find((r) => mine(r) && !r.started) || rooms.find((r) => mine(r) && r.started);
+  netNotice = '';
+  if (open) { net.guestJoin(name, open.code); return; }
+  net.usePeer = true;
+  net.hostCreate(name, `🏆 ${m.label} · ${m.a.name} vs ${m.b.name}`, 45000,
+    { key: m.key, pids: [m.a.pid, m.b.pid], prefix: finalRoomPrefix(m.key) });
+}
+
+// Both players opened a room for the same match at once: the one with the later
+// code closes theirs and joins the other.
+function mergeFinalRooms(rooms) {
+  if (!net || net.role !== 'host' || net.phase !== 'hostlobby' || !net.final || net.names.length !== 1) return;
+  const other = rooms.find((r) => r.final && r.final.key === net.final.key && !r.started && r.code !== net.shortCode
+    && (r.final.pids || []).includes(net.myPid) && r.code < net.shortCode);
+  if (!other) return;
+  const name = net.myName;
+  net.end();
+  openNet();
+  noticeOpen = false;
+  net.guestJoin(name, other.code);
+}
 
 function refreshLobby() {
   if (!net || !net.usePeer) return;
@@ -421,8 +499,9 @@ function refreshLobby() {
     _lobbyUnwatch = watchRooms((rooms) => {
       if (!net) return;
       net.roomList = rooms;
+      mergeFinalRooms(rooms);
       // Only re-render if we're on the lobby screen.
-      if (net.phase === 'menu') render();
+      if (net && net.phase === 'menu') render();
     });
   } catch {}
 }
@@ -482,9 +561,9 @@ let _statsUnwatch = null;
 function stopStatsWatch() {
   if (_statsUnwatch) { try { _statsUnwatch(); } catch {} _statsUnwatch = null; }
 }
-function openFriendStats() {
+function openFriendStats(wantTab) {
   const myPid = getPlayerId(storage);
-  const tab = friendStats?.tab || 'event';
+  const tab = ['final', 'event', 'all', 'duel'].includes(wantTab) ? wantTab : friendStats?.tab || (Date.now() >= EVENT.end ? 'final' : 'event');
   friendStats = { loading: true, error: false, rows: [], duel: [], event: [], tab, myPid };
   const apply = (m) => {
     if (!friendStats) return;
@@ -511,8 +590,10 @@ function closeFriendStats() {
 setInterval(() => {
   const els = document.querySelectorAll('.evtimer');
   if (!els.length) return;
-  const txt = formatRemain(EVENT.end - Date.now());
-  els.forEach((e) => { if (e.textContent !== txt) e.textContent = txt; });
+  els.forEach((e) => {
+    const txt = formatRemain((Number(e.dataset.end) || EVENT.end) - Date.now());
+    if (e.textContent !== txt) e.textContent = txt;
+  });
 }, 1000);
 
 // Spectator chat: a slim strip pinned to the bottom of the viewport for everyone.
@@ -595,7 +676,7 @@ function syncEmoteBar() {
   const on = !!(net && ctrl && ctrl.mp && !ctrl.spectator && !ctrl.finished && net.phase === 'playing');
   // Event leader gets an extra 메롱 button with its per-game uses left.
   // Event emote for every player while the event runs (leader has extra uses).
-  const evOn = on && typeof net.tongueLeft === 'function' && isEventActive();
+  const evOn = on && typeof net.tongueLeft === 'function' && Date.now() >= EVENT.start && Date.now() < FINAL.end;
   const left = evOn ? net.tongueLeft() : 0;
   const lead = evOn;
   const max = evOn ? net.tongueMax() : 0;
@@ -744,9 +825,23 @@ document.addEventListener('click', (e) => {
       noticeOpen = false;
       try { storage?.setItem(NOTICE_KEY, '1'); } catch {}
       break;
-    case 'net-stats': case 'net-stats-refresh': openFriendStats(); break;
+    case 'net-stats': case 'net-stats-refresh': openFriendStats(d.tab); break;
+    case 'net-final-enter': enterFinalMatch(); return;
+    case 'net-champ-close':
+      champOpen = false;
+      try { storage?.setItem(CHAMP_KEY, '1'); } catch {}
+      break;
+    case 'net-final-pick': if (net && d.pid) {
+      if (!window.confirm(`4강 상대로 ${d.name || ''}을(를) 지명할까요? 바꿀 수 없어요.`)) break;
+      writeFinalPick({ pid: d.pid, name: d.name || '', by: net.myPid }).then((p) => {
+        if (!net) return;
+        if (p) net.finalPick = p; else netNotice = '지명 저장에 실패했어요. 다시 시도해주세요.';
+        render();
+      });
+      return;
+    } break;
     case 'net-stats-close': closeFriendStats(); break;
-    case 'net-stats-tab': if (friendStats) friendStats.tab = ['duel', 'event'].includes(d.tab) ? d.tab : 'all'; break;
+    case 'net-stats-tab': if (friendStats) friendStats.tab = ['duel', 'event', 'final'].includes(d.tab) ? d.tab : 'all'; break;
     case 'net-help-close': netHelpOpen = false; break;
     case 'net-timelimit': if (net) {
       const ms = Number(d.ms);

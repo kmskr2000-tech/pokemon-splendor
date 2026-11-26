@@ -5,7 +5,7 @@ import { CARDS } from '../data/cards.js?v=1795654245';
 import { createController } from '../ui/controller.js?v=1795654245';
 import { NetRoom } from './webrtc.js?v=1795654245';
 import { FirebaseRoom, writeMatch, loadMatches, readLiveRoom, watchLiveRoom, watchSpectators, watchChat, sendChat } from './fireroom.js?v=1795654245';
-import { buildResults, cleanPid, eventStandings, eventLeaders, isEventActive } from './stats.js?v=1795654245';
+import { buildResults, cleanPid, eventStandings, eventLeaders, isEventActive, EVENT, FINAL } from './stats.js?v=1795654245';
 import { MSG, makeMsg, stateHash } from './protocol.js?v=1795654245';
 
 const MAX_PLAYERS = 4;
@@ -64,6 +64,7 @@ export class NetSession {
     this.eventLeaders = new Set(); // pids leading the event (loaded at game start)
     this.actionCount = 0; // host: applied actions (authoritative snapshot sequence)
     this._commitChain = Promise.resolve(); // host: ordered snapshot->broadcast chain
+    this.final = null; // host: tournament match room info { key, pids, prefix }
     this.spectators = 0; // live spectator count of this room
     this._specUnwatch = null; // players: spectator-count watcher
     this._liveUnwatch = null; // spectator: snapshot watcher
@@ -135,8 +136,11 @@ export class NetSession {
 
   // ---------- host ----------
 
-  async hostCreate(name, title = '', turnLimitMs = DEFAULT_TURN_LIMIT_MS) {
+  // final: { key, pids: [a, b], prefix } makes a tournament match room: only the
+  // two listed players may join, and no AI seats.
+  async hostCreate(name, title = '', turnLimitMs = DEFAULT_TURN_LIMIT_MS, final = null) {
     this.role = 'host';
+    this.final = final;
     this.myName = this.cleanName(name);
     this.turnLimitMs = turnLimitMs;
     this.names = [this.myName];
@@ -149,7 +153,8 @@ export class NetSession {
     this.cb.onRender();
     try {
       if (this.usePeer) {
-        this.shortCode = await this.room.hostCreate(this.myName, title, this.turnLimitMs);
+        this.shortCode = await this.room.hostCreate(this.myName, title, this.turnLimitMs,
+          final ? { prefix: final.prefix, final: { key: final.key, pids: final.pids } } : {});
         // Remember the room so the host can rejoin their own seat (index 0)
         // after a disconnect, once a guest has taken over as host.
         this.saveRejoin(this.shortCode, 0);
@@ -221,6 +226,7 @@ export class NetSession {
   }
 
   hostStart() {
+    if (this.final) { this.aiCount = 0; if (this.names.length !== 2) return; }
     const total = this.names.length + this.aiCount;
     if (this.names.length < 1 || total < 2 || total > MAX_PLAYERS) return;
     const seed = (crypto.getRandomValues(new Uint32Array(1))[0] || 1);
@@ -264,6 +270,8 @@ export class NetSession {
         }
         if (this.names.length >= MAX_PLAYERS) return;
         if (this.peerToPlayer[peerIdx] != null) return; // already joined
+        // Tournament room: just the two players of this match.
+        if (this.final && (this.names.length >= 2 || !this.final.pids.includes(cleanPid(m.pid)))) return;
         const idx = this.names.length;
         this.names.push(this.cleanName(m.name));
         this.pids[idx] = cleanPid(m.pid);
@@ -481,13 +489,14 @@ export class NetSession {
 
   /** Event emotes this seat may still send this game (0 = used up / event over). */
   tongueLeft(seat = this.myIndex) {
-    if (!isEventActive(this.now())) return 0;
+    const now = this.now();
+    if (!(isEventActive(now) || (now >= EVENT.end && now < FINAL.end))) return 0;
     return Math.max(0, this.tongueMax(seat) - (this._tongueUsed[seat] || 0));
   }
 
   /** Load event standings and remember the current leaders (every client, at game start). */
   refreshEventLeaders() {
-    if (!this.usePeer || !isEventActive(this.now())) return Promise.resolve();
+    if (!this.usePeer || this.now() < EVENT.start || this.now() >= FINAL.end) return Promise.resolve();
     return Promise.resolve()
       .then(() => this.loadMatches())
       .then((m) => {

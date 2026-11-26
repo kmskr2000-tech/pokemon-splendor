@@ -8,6 +8,7 @@ import { dexSummary } from '../storage/store.js?v=1795654245';
 import { ACHIEVEMENTS } from '../data/achievements.js?v=1795654245';
 import { CHALLENGES, challengeProgress } from '../data/challenges.js?v=1795654245';
 import { EVENT, FINAL, formatRemain, leaguePoints } from '../net/stats.js?v=1795654245';
+import { MATCH_KEYS, MATCH_LABEL, finalKeyOf, myOpenMatch } from '../net/final.js?v=1795654245';
 import { TONGUE_MAX, TONGUE_LEADER_BONUS } from '../net/session.js?v=1795654245';
 
 const diffLabel = { easy: '쉬움', normal: '보통', hard: '어려움' };
@@ -654,8 +655,43 @@ export function eventBannerHTML(rows, now = Date.now()) {
   </div>`;
 }
 
-// Final tournament teaser banner (the event's last stage). Opens the notice.
-export function finalBannerHTML(rows, now = Date.now()) {
+// One bracket line: "4강 1경기  👑A 1 : 0 B  (status)".
+function matchLineHTML(m, myPid) {
+  if (!m) return '';
+  const nm = (p) => `${p.seed === 1 ? '👑' : ''}${esc(p.name)}${p.pid === myPid ? ' (나)' : ''}`;
+  const st = m.winner ? `${esc(m.winner.name)} 승${m.forfeit ? ' (부전승)' : ''}` : '진행 중';
+  return `<div class="finmatch ${m.winner ? 'over' : 'live'}"><span class="fm-label">${m.label}</span>
+    <span class="fm-a ${m.winner === m.a ? 'won' : ''}">${nm(m.a)}</span><b class="fm-score">${m.sa} : ${m.sb}</b><span class="fm-b ${m.winner === m.b ? 'won' : ''}">${nm(m.b)}</span>
+    <span class="fm-st">${st} · ${m.need}선승</span></div>`;
+}
+
+// Final tournament banner: follows the tournament phase. Before the league ends
+// it is a teaser that opens the rules; afterwards it opens the final tab.
+export function finalBannerHTML(rows, fin, myPid = '', now = Date.now()) {
+  if (fin && fin.phase !== 'league') {
+    let body;
+    if (fin.phase === 'none') body = '<div class="finline">진출자가 4명이 안 돼 토너먼트가 열리지 않아요.</div>';
+    else if (fin.phase === 'pick') {
+      body = `<div class="finline names">${fin.seeds.map((s) => `${s.seed === 1 ? '👑' : ''}${esc(s.name)} <b>${s.lp}</b>`).join(' · ')}</div>
+        <div class="finline">👑 ${esc(fin.seeds[0].name)}이(가) 4강 상대 지명 중 · 남은 시간 <span class="evtimer" data-end="${FINAL.pickBy}">${formatRemain(FINAL.pickBy - now)}</span></div>`;
+    } else if (fin.phase === 'done') {
+      body = `<div class="finline champ">🏆 최종 우승 <b>${esc(fin.champion.name)}</b> (${fin.champion.total}점)</div>
+        <div class="finline"><small>${fin.table.map((r) => `${esc(r.name)} ${r.total}`).join(' · ')}</small></div>`;
+    } else {
+      const ms = fin.phase === 'semis' ? [fin.matches.S1, fin.matches.S2] : [fin.matches.F1, fin.matches.T3];
+      body = `${ms.map((m) => matchLineHTML(m, myPid)).join('')}
+        <div class="finline"><small>자정 마감까지 <span class="evtimer" data-end="${FINAL.end}">${formatRemain(FINAL.end - now)}</span></small></div>`;
+    }
+    const mine = myOpenMatch(fin, myPid);
+    return `<div class="finbanner" data-action="net-stats" data-tab="final">
+      <div class="fintitle">🏆 ${FINAL.title} <small>${{ pick: '상대 지명', semis: '4강', finals: '결승', done: '종료', none: '' }[fin.phase] || ''}</small></div>
+      ${body}</div>
+      ${mine ? `<div class="btnrow"><button class="btn primary finenter" data-action="net-final-enter" data-key="${mine.key}">🏆 내 경기 입장 · ${mine.label}</button></div>` : ''}`;
+  }
+  return finalTeaserHTML(rows, now);
+}
+
+function finalTeaserHTML(rows, now = Date.now()) {
   const lp = leaguePoints(rows || []).slice(0, FINAL.slots);
   const names = rows == null ? '불러오는 중…'
     : lp.length ? lp.map((r) => `${r.seed === 1 ? '👑' : ''}${esc(r.name)} <b>${r.lp}</b>`).join(' · ')
@@ -721,13 +757,65 @@ function eventTabHTML(st) {
     <p class="sheet-p"><small>🔴 실시간 반영. 단독 1등만 승리로 쳐요. 승수가 같으면 공동 순위.</small></p>`;
 }
 
+// Final tournament tab. st.final = finalState(...).
+function finalTabHTML(st) {
+  const fin = st.final;
+  const now = Date.now();
+  if (!fin) return '<p class="sheet-p">불러오는 중…</p>';
+  const rules = '<p class="sheet-p"><button class="aibtn" data-action="net-notice">📢 규칙·일정 보기</button></p>';
+  const seedLine = (s) => `${s.seed === 1 ? '👑' : ''}${esc(s.name)}${s.pid === st.myPid ? ' (나)' : ''}`;
+  if (fin.phase === 'league') {
+    const list = fin.seeds.length
+      ? `<table class="rank"><tr><th>시드</th><th>이름</th><th>리그 점수</th></tr>${fin.seeds.map((s) => `<tr class="${s.pid === st.myPid ? 'me' : ''}"><td>${s.seed}</td><td>${seedLine(s)}</td><td class="lpcell">${s.lp}</td></tr>`).join('')}</table>`
+      : '<p class="sheet-p">아직 기록이 없어요.</p>';
+    return `<p class="sheet-p">리그 마감(<b>${EVENT.endLabel}</b>) 후 상위 ${FINAL.slots}명으로 시작해요.<br>
+      ⏳ 리그 마감까지 <b class="evtimer">${formatRemain(EVENT.end - now)}</b><br><small>아래는 지금 순위 기준 진출권이에요.</small></p>${list}${rules}`;
+  }
+  if (fin.phase === 'none') return `<p class="sheet-p">리그에 참가한 사람이 ${FINAL.slots}명이 안 돼 토너먼트가 열리지 않아요.</p>${rules}`;
+  if (fin.phase === 'pick') {
+    const iLead = fin.seeds[0].pid === st.myPid;
+    const picks = iLead
+      ? `<p class="sheet-p"><b>👑 리그 1위 혜택: 4강 상대를 고르세요.</b><br><small>한 번 고르면 바꿀 수 없어요.</small></p>
+        <div class="btnrow">${fin.seeds.slice(1).map((s) => `<button class="btn alt" data-action="net-final-pick" data-pid="${s.pid}" data-name="${esc(s.name)}">${s.seed}위 ${esc(s.name)}</button>`).join('')}</div>`
+      : `<p class="sheet-p">👑 <b>${esc(fin.seeds[0].name)}</b>이(가) 4강 상대를 고르는 중이에요.</p>`;
+    return `<p class="sheet-p">진출자: ${fin.seeds.map(seedLine).join(' · ')}<br>
+      ⏳ 지명 마감까지 <b class="evtimer" data-end="${FINAL.pickBy}">${formatRemain(FINAL.pickBy - now)}</b> <small>(안 고르면 ${FINAL.slots}위와 대결)</small></p>${picks}${rules}`;
+  }
+  const mine = myOpenMatch(fin, st.myPid);
+  const bracket = MATCH_KEYS.map((k) => fin.matches[k]
+    ? matchLineHTML(fin.matches[k], st.myPid)
+    : `<div class="finmatch wait"><span class="fm-label">${MATCH_LABEL[k]}</span><span class="fm-st">4강이 끝나면 열려요</span></div>`).join('');
+  const rows = fin.table.map((r, i) => `<tr class="${r.pid === st.myPid ? 'me' : ''}${fin.champion && i === 0 ? ' win' : ''}"><td>${fin.champion && i === 0 ? '🏆' : i + 1}</td><td>${seedLine(r)}</td><td>${r.lp}</td><td>${r.place ? r.tp : '-'}</td><td class="lpcell">${r.total}</td></tr>`).join('');
+  return `${fin.champion
+    ? `<p class="sheet-p champline">🏆 최종 우승 <b>${esc(fin.champion.name)}</b> · ${fin.champion.total}점</p>`
+    : `<p class="sheet-p">⏳ 경기 마감(자정)까지 <b class="evtimer" data-end="${FINAL.end}">${formatRemain(FINAL.end - now)}</b><br>
+      <small>${fin.autoPick ? '지명이 없어 자동 대진이에요. ' : ''}1:1 전용 방에서 끝난 판만 인정. 공동 1등은 무효.</small></p>`}
+    ${mine ? `<div class="btnrow"><button class="btn primary finenter" data-action="net-final-enter" data-key="${mine.key}">🏆 내 경기 입장 · ${mine.label}</button></div>` : ''}
+    <div class="finbracket">${bracket}</div>
+    <table class="rank"><tr><th></th><th>이름</th><th>리그</th><th>토너</th><th>합계</th></tr>${rows}</table>
+    <p class="sheet-p"><small>토너 점수: 우승 ${FINAL.points[0]} / 준우승 ${FINAL.points[1]} / 3위 ${FINAL.points[2]} / 4위 ${FINAL.points[3]}. 합계 1위가 최종 우승.</small></p>${rules}`;
+}
+
+// Shown once when the overall winner is decided.
+export function championHTML(fin) {
+  const rows = fin.table.map((r, i) => `<tr class="${i === 0 ? 'win' : ''}"><td>${i === 0 ? '🏆' : i + 1}</td><td>${esc(r.name)}</td><td>${r.lp}</td><td>${r.tp}</td><td class="lpcell">${r.total}</td></tr>`).join('');
+  return `<div class="overlay"><div class="panel champpanel">
+    <div class="title big">🏆 최종 우승</div>
+    <div class="champname">${esc(fin.champion.name)}</div>
+    <p class="sheet-p">리그 ${fin.champion.lp}점 + 토너먼트 ${fin.champion.tp}점 = <b>${fin.champion.total}점</b></p>
+    <table class="rank"><tr><th></th><th>이름</th><th>리그</th><th>토너</th><th>합계</th></tr>${rows}</table>
+    <div class="btnrow"><button class="btn primary" data-action="net-champ-close">확인</button></div>
+  </div></div>`;
+}
+
 // Friend stats (multiplayer). st: { loading, error, rows, duel, event, tab: 'event'|'all'|'duel', myPid }
 export function friendStatsHTML(st) {
-  const tab = ['duel', 'event'].includes(st.tab) ? st.tab : 'all';
+  const tab = ['duel', 'event', 'final'].includes(st.tab) ? st.tab : 'all';
   const fmt = (t) => { const d = new Date(t); return `${d.getMonth() + 1}/${d.getDate()}`; };
   let body;
   if (st.loading) body = '<p class="sheet-p">불러오는 중…</p>';
   else if (st.error) body = '<p class="sheet-p">전적을 불러오지 못했어요. 잠시 후 다시 시도해주세요.</p>';
+  else if (tab === 'final') body = finalTabHTML(st);
   else if (tab === 'event') body = eventTabHTML(st);
   else if (tab === 'all') {
     if (!st.rows.length) body = '<p class="sheet-p">아직 기록된 대전이 없어요.<br><small>친구와 멀티 게임을 끝까지 하면 쌓여요.</small></p>';
@@ -747,10 +835,11 @@ export function friendStatsHTML(st) {
     }
   }
   return `<div class="overlay"><div class="panel">
-    <div class="title big">🏆 ${tab === 'duel' ? '듀얼 전적' : tab === 'event' ? '이벤트 순위' : '친구 전적'}</div>
-    <div class="aibtns statstabs"><button class="aibtn ${tab === 'event' ? 'sel' : ''}" data-action="net-stats-tab" data-tab="event">🎉 이벤트</button>
-    <button class="aibtn ${tab === 'all' ? 'sel' : ''}" data-action="net-stats-tab" data-tab="all">친구 전적</button>
-    <button class="aibtn ${tab === 'duel' ? 'sel' : ''}" data-action="net-stats-tab" data-tab="duel">⚔ 듀얼 전적</button></div>
+    <div class="title big">🏆 ${tab === 'duel' ? '듀얼 전적' : tab === 'event' ? '리그 순위' : tab === 'final' ? '파이널' : '친구 전적'}</div>
+    <div class="aibtns statstabs"><button class="aibtn ${tab === 'final' ? 'sel' : ''}" data-action="net-stats-tab" data-tab="final">🏆 파이널</button>
+    <button class="aibtn ${tab === 'event' ? 'sel' : ''}" data-action="net-stats-tab" data-tab="event">🎉 리그</button>
+    <button class="aibtn ${tab === 'all' ? 'sel' : ''}" data-action="net-stats-tab" data-tab="all">전적</button>
+    <button class="aibtn ${tab === 'duel' ? 'sel' : ''}" data-action="net-stats-tab" data-tab="duel">⚔ 듀얼</button></div>
     ${body}
     <div class="btnrow"><button class="btn ghost" data-action="net-stats-refresh">🔄 새로고침</button>
     <button class="btn primary" data-action="net-stats-close">닫기</button></div>
@@ -792,16 +881,20 @@ export function netHTML(net, notice = '') {
       const rooms = net.roomList || [];
       const roomHtml = rooms.length === 0
         ? '<p class="sheet-p">열린 방이 없어요. 방을 만들어보세요!</p>'
-        : rooms.map((r) => (r.started ? `
+        : rooms.map((r) => (r.final && !r.started ? `
+          <div class="roomitem finroom" ${(r.final.pids || []).includes(net.myPid) ? `data-action="net-final-enter" data-key="${esc(r.final.key)}"` : ''}>
+            <div class="roomtitle">${esc(r.title)}</div>
+            <div class="roommeta">${(r.final.pids || []).includes(net.myPid) ? '<b>내 경기 · 탭해서 입장</b>' : '참가자 전용 · 시작하면 관전할 수 있어요'}</div>
+          </div>` : r.started ? `
           <div class="roomitem live" data-action="net-spectate" data-code="${esc(r.code)}">
-            <div class="roomtitle"><span class="livetag">● 게임 중</span> ${esc(r.title)}</div>
+            <div class="roomtitle"><span class="livetag">● ${r.final ? '🏆 토너먼트 경기 중' : '게임 중'}</span> ${esc(r.title)}</div>
             <div class="roommeta">👑 ${esc(r.hostName)} · ${r.playerCount}명 · 👀 ${r.spectators || 0}명 관전 · <b>탭해서 관전</b></div>
           </div>` : `
           <div class="roomitem" data-action="net-lobby-join" data-code="${esc(r.code)}">
             <div class="roomtitle">${esc(r.title)}</div>
             <div class="roommeta">👑 ${esc(r.hostName)} · ${r.playerCount}/4명 · ⏱ ${Math.round((r.turnLimitMs || 45000) / 1000)}초</div>
           </div>`)).join('');
-      body = `${finalBannerHTML(net.eventRows)}${eventBannerHTML(net.eventRows)}
+      body = `${finalBannerHTML(net.eventRows, net.finalState, net.myPid)}${eventBannerHTML(net.eventRows)}
         <p class="sheet-p">친구와 대전해요. 방을 골라 입장하세요. (2~4인)</p>
         <div class="roomlist">${roomHtml}</div>
         ${(() => { const rj = typeof net.peekRejoin === 'function' ? net.peekRejoin() : null;
@@ -852,13 +945,14 @@ export function netHTML(net, notice = '') {
       const aiBtns = [0, 1, 2, 3].filter((n) => n <= maxAi).map((n) =>
         `<button class="aibtn ${net.aiCount === n ? 'sel' : ''}" data-action="net-ai" data-n="${n}">${n === 0 ? '없음' : n + '명'}</button>`).join('');
       const total = net.names.length + net.aiCount;
-      body = `${codeHtml}<div class="roster">${roster}</div>
+      const finKey = finalKeyOf(net.shortCode);
+      body = `${finKey ? `<p class="sheet-p finlobby">🏆 <b>${MATCH_LABEL[finKey]}</b><br><small>상대가 "내 경기 입장"을 누르면 들어와요. 둘이 모이면 시작하세요.</small></p>` : codeHtml}<div class="roster">${roster}</div>
         <p class="sheet-p">⏱ 턴 시간제한: ${Math.round((net.turnLimitMs || 45000) / 1000)}초</p>
-        ${maxAi > 0 ? `<div class="airow"><span>🤖 남는 자리 AI로 채우기 <small>(어려움)</small></span><div class="aibtns">${aiBtns}</div></div>` : ''}
+        ${maxAi > 0 && !finKey ? `<div class="airow"><span>🤖 남는 자리 AI로 채우기 <small>(어려움)</small></span><div class="aibtns">${aiBtns}</div></div>` : ''}
         <p class="sheet-p">${net.names.length}명${net.aiCount ? ` + AI ${net.aiCount}명` : ''} (총 ${total}인)</p>
         <div class="btnrow">
         ${!net.usePeer && net.names.length < 4 ? '<button class="btn alt" data-action="net-host-invite">➕ 게스트 초대</button>' : ''}
-        <button class="btn primary" data-action="net-host-start" ${total < 2 ? 'disabled' : ''}>게임 시작</button>
+        <button class="btn primary" data-action="net-host-start" ${total < 2 || (finKey && net.names.length !== 2) ? 'disabled' : ''}>게임 시작</button>
         <button class="btn ghost" data-action="net-leave">나가기</button></div>`;
       break;
     }

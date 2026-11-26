@@ -85,6 +85,32 @@ export function watchMatches(cb, onError = () => {}) {
   return () => { try { ref.off('value', handler); } catch {} };
 }
 
+// ---------- final tournament: the league winner's semifinal pick ----------
+// Kept under the rooms path (the one place every client may write). The node
+// looks like a started room with a far-future host heartbeat, so no client
+// lists it or sweeps it as a dead room.
+const PICK_PATH = `${ROOMS_PATH}/0PICK0`;
+const FAR_FUTURE = 4102444800000; // 2100-01-01
+
+/** Store the pick once (first write wins). Resolves the stored pick, or null on failure. */
+export async function writeFinalPick(pick) {
+  try {
+    const ref = getDb().ref(PICK_PATH);
+    const cur = (await ref.once('value')).val();
+    if (cur && cur.pick && cur.pick.pid) return cur.pick;
+    await ref.update({ started: true, hostHb: FAR_FUTURE, created: Date.now(), pick: { pid: pick.pid, name: pick.name || '', by: pick.by || '', at: Date.now() } });
+    return (await ref.once('value')).val()?.pick || null;
+  } catch { return null; }
+}
+
+/** Live pick: cb(pick | null). Returns unsubscribe. */
+export function watchFinalPick(cb) {
+  const ref = getDb().ref(`${PICK_PATH}/pick`);
+  const handler = (s) => { const v = s.val(); cb(v && v.pid ? v : null); };
+  ref.on('value', handler, () => cb(null));
+  return () => { try { ref.off('value', handler); } catch {} };
+}
+
 // ---------- spectating (read-only; no room messages, unlimited viewers) ----------
 // Spectators only read the host's authoritative snapshot, so they add no load
 // to the host and never touch the lockstep protocol.
@@ -259,6 +285,7 @@ function classifyRooms(snap) {
         const si = r.startInfo || {};
         rooms.push({
           code,
+          final: r.final || null,
           started: true,
           title: r.title || '제목 없음',
           hostName: r.hostName || '?',
@@ -272,6 +299,7 @@ function classifyRooms(snap) {
       if (!isRoomJoinable(r, now)) return;
       rooms.push({
         code,
+        final: r.final || null,
         title: r.title || '제목 없음',
         hostName: r.hostName || '?',
         playerCount: 1 + guests, // host + guests
@@ -338,13 +366,15 @@ export class FirebaseRoom {
   // ---------- host ----------
 
   /** Host: create a room, return the 6-char code. */
-  async hostCreate(hostName = '', title = '', turnLimitMs = 45000) {
+  async hostCreate(hostName = '', title = '', turnLimitMs = 45000, opts = {}) {
     this.isHost = true;
     this.turnLimitMs = turnLimitMs;
     const db = getDb();
     this._db = db;
+    // opts.prefix: tournament rooms get a recognisable code ('0' + match key + random).
+    const prefix = String(opts.prefix || '');
     for (let i = 0; i < 4; i++) {
-      const code = genCode();
+      const code = prefix ? prefix + genCode(Math.max(1, 6 - prefix.length)) : genCode();
       const roomRef = db.ref(`${ROOMS_PATH}/${code}`);
       const snap = await roomRef.once('value');
       if (snap.exists()) continue;
@@ -353,6 +383,7 @@ export class FirebaseRoom {
         title: title || `${hostName}의 방`,
         hostName: hostName || '?',
         turnLimitMs,
+        final: opts.final || null, // { key, pids: [a, b] } for a tournament match room
       });
       this.code = code;
       // Host presence: unique hostId + heartbeat. If this client disconnects,
