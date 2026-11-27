@@ -670,6 +670,9 @@ document.addEventListener('submit', (e) => {
 });
 
 let emoteBarOn = 'off';
+// The emote picker stays folded into one toggle button so it never covers the
+// board; it opens on tap and folds again after an emote is sent.
+let emoteOpen = false;
 function syncEmoteBar() {
   const bar = document.getElementById('emotebar');
   if (!bar) return;
@@ -680,7 +683,8 @@ function syncEmoteBar() {
   const left = evOn ? net.tongueLeft() : 0;
   const lead = evOn;
   const max = evOn ? net.tongueMax() : 0;
-  const key = on ? `on:${lead ? left : '-'}` : 'off';
+  if (!on) emoteOpen = false;
+  const key = on ? `on:${lead ? left : '-'}:${emoteOpen ? 1 : 0}` : 'off';
   if (key === emoteBarOn) return;
   emoteBarOn = key;
   bar.hidden = !on;
@@ -689,7 +693,11 @@ function syncEmoteBar() {
   const tongueBtn = lead
     ? `<button class="tonguebtn" data-action="emote" data-k="${TONGUE}" ${left ? '' : 'disabled'} aria-label="이벤트 메롱 (${left}/${max})">😝<i>${left}</i></button>`
     : '';
-  bar.innerHTML = on ? tongueBtn + EMOTES.map((k) => `<button class="${isText(k) ? 'txt' : ''}" data-action="emote" data-k="${k}" aria-label="이모티콘 ${k}">${k}</button>`).join('') : '';
+  const toggle = `<button class="emotetoggle${emoteOpen ? ' open' : ''}" data-action="emote-toggle" aria-label="${emoteOpen ? '이모티콘 닫기' : '이모티콘 열기'}" aria-expanded="${emoteOpen}">${emoteOpen ? '✕' : '😀'}</button>`;
+  const panel = emoteOpen
+    ? `<div class="emotepanel">${tongueBtn}${EMOTES.map((k) => `<button class="${isText(k) ? 'txt' : ''}" data-action="emote" data-k="${k}" aria-label="이모티콘 ${k}">${k}</button>`).join('')}</div>`
+    : '';
+  bar.innerHTML = on ? panel + toggle : '';
 }
 
 let _timerUpdater = null;
@@ -732,7 +740,8 @@ document.addEventListener('click', (e) => {
   if (options.bgm && !ctrl) startBGM('calm');
   const d = el.dataset;
   switch (d.action) {
-    case 'emote': if (net) { net.sendEmote(d.k); syncEmoteBar(); } return;
+    case 'emote': if (net) { net.sendEmote(d.k); emoteOpen = false; syncEmoteBar(); } return;
+    case 'emote-toggle': emoteOpen = !emoteOpen; syncEmoteBar(); return;
     case 'start': startGame(d.name); return;
     case 'resume': resumeGame(); return;
     case 'dex': dexOpen = true; dexDetail = null; break;
