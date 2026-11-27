@@ -50,20 +50,20 @@ function showInAppGuide() {
 }
 showInAppGuide();
 
-import { CARDS } from '../data/cards.js?v=1795744992';
-import { ACHIEVEMENTS, checkAchievements } from '../data/achievements.js?v=1795744992';
-import { CHALLENGES, challengeWon } from '../data/challenges.js?v=1795744992';
-import { createController } from './controller.js?v=1795744992';
-import * as V from './view.js?v=1795744992';
-import { NetSession, EMOTES, TONGUE } from '../net/session.js?v=1795744992';
-import { listRooms, watchRooms, loadMatches, watchMatches, watchFinalPick, writeFinalPick } from '../net/fireroom.js?v=1795744992';
-import { aggregateStats, duelPairs, eventStandings, EVENT, FINAL, formatRemain } from '../net/stats.js?v=1795744992';
-import { finalState, myOpenMatch, finalRoomPrefix, MATCH_LABEL } from '../net/final.js?v=1795744992';
-import { getBonuses, getPoints, bonusList } from '../core/engine.js?v=1795744992';
-import { startBGM, stopBGM, unlockAudio } from '../audio/bgm.js?v=1795744992';
-import { sfx, setSFXEnabled } from '../audio/sfx.js?v=1795744992';
-import { browserStorage, loadDex, loadSave, saveGame, clearSave, recordCatch, recordGame, loadOptions, saveOptions, loadAchv, unlockAchv, loadRecords, recordResult, victoryScore, loadChal, completeChal, getPlayerId } from '../storage/store.js?v=1795744992';
-import { createTurnAlerter } from './turn-alert.js?v=1795744992';
+import { CARDS } from '../data/cards.js?v=1795745800';
+import { ACHIEVEMENTS, checkAchievements } from '../data/achievements.js?v=1795745800';
+import { CHALLENGES, challengeWon } from '../data/challenges.js?v=1795745800';
+import { createController } from './controller.js?v=1795745800';
+import * as V from './view.js?v=1795745800';
+import { NetSession, EMOTES, TONGUE } from '../net/session.js?v=1795745800';
+import { listRooms, watchRooms, loadMatches, watchMatches, watchFinalPick, writeFinalPick } from '../net/fireroom.js?v=1795745800';
+import { aggregateStats, duelPairs, eventStandings, EVENT, FINAL, formatRemain } from '../net/stats.js?v=1795745800';
+import { finalState, myOpenMatch, finalRoomPrefix, MATCH_LABEL } from '../net/final.js?v=1795745800';
+import { getBonuses, getPoints, bonusList } from '../core/engine.js?v=1795745800';
+import { startBGM, stopBGM, unlockAudio } from '../audio/bgm.js?v=1795745800';
+import { sfx, setSFXEnabled } from '../audio/sfx.js?v=1795745800';
+import { browserStorage, loadDex, loadSave, saveGame, clearSave, recordCatch, recordGame, loadOptions, saveOptions, loadAchv, unlockAchv, loadRecords, recordResult, victoryScore, loadChal, completeChal, getPlayerId } from '../storage/store.js?v=1795745800';
+import { createTurnAlerter } from './turn-alert.js?v=1795745800';
 
 const params = new URLSearchParams(location.search);
 const AI_DELAY = params.has('fast') ? 0 : 1600; // ?fast=1 skips the pacing delay (tests)

@@ -4,8 +4,8 @@
 // Sound goes through sfx (its own on/off setting); banner/vibration/browser
 // alerts follow the `turnNotify` option. All DOM access is guarded so this
 // module is safe to import from Node tests.
-import { sfx } from '../audio/sfx.js?v=1795744992';
-import { PHASES } from '../core/constants.js?v=1795744992';
+import { sfx } from '../audio/sfx.js?v=1795745800';
+import { PHASES } from '../core/constants.js?v=1795745800';
 
 export function turnAlertMessage(phase) {
   if (phase === PHASES.DISCARD) return '볼을 반환할 차례예요!';
