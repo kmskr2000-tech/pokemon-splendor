@@ -12,7 +12,7 @@
 //   the higher league seed.
 // - Overall winner: league points + tournament points (ties: tournament place).
 
-import { EVENT, FINAL, eventStandings, leaguePoints, cleanPid } from './stats.js?v=1795655295';
+import { EVENT, FINAL, eventStandings, leaguePoints, cleanPid } from './stats.js?v=1795744992';
 
 export const MATCH_KEYS = ['S1', 'S2', 'T3', 'F1'];
 export const MATCH_LABEL = { S1: '4강 1경기', S2: '4강 2경기', T3: '3·4위전', F1: '결승' };
