@@ -9,7 +9,7 @@ import { buildResults, cleanPid, eventStandings, eventLeaders, isEventActive, EV
 import { MSG, makeMsg, stateHash } from './protocol.js?v=1795655295';
 
 const MAX_PLAYERS = 4;
-export const EMOTES = ['😂', '🖕', '⏰', '중국인'];
+export const EMOTES = ['😂', '🖕', '⏰', '중국인', '10🖕🖕', '멈와와', '호재허', '송탁', '해장'];
 const EMOTE_COOLDOWN_MS = 2500;
 // Event emote: every player may send it TONGUE_MAX times per game; the current
 // event leader gets TONGUE_LEADER_BONUS more.

@@ -685,7 +685,7 @@ function syncEmoteBar() {
   emoteBarOn = key;
   bar.hidden = !on;
   // Text emotes (e.g. '중국인') get a wider, smaller-font button than emoji ones.
-  const isText = (k) => /^[\p{L}\p{N}]+$/u.test(k);
+  const isText = (k) => /[\p{L}\p{N}]/u.test(k);
   const tongueBtn = lead
     ? `<button class="tonguebtn" data-action="emote" data-k="${TONGUE}" ${left ? '' : 'disabled'} aria-label="이벤트 메롱 (${left}/${max})">😝<i>${left}</i></button>`
     : '';
